@@ -6,9 +6,12 @@ import {
   hasOrgPortalRole,
   isAdminRole,
 } from "@/shared/auth/roles";
-import type { OrganizationMembership } from "@/features/organizations/contracts/organization";
-import { organizationsMockAdapter } from "@/features/organizations/api/organizations.mock";
+import {
+  normalizeMembership,
+  type OrganizationMembership,
+} from "@/features/organizations/contracts/organization";
 import { gatewayFetch } from "@/shared/api/gateway-client";
+import { extractPageItems } from "@/shared/api/api-envelope";
 
 export const ACTIVE_ORG_COOKIE = "hc_active_org_id";
 
@@ -16,7 +19,6 @@ export interface AuthContext {
   userId: string;
   email: string;
   roles: string[];
-  isMockMode: boolean;
 }
 
 export interface OrgContext extends AuthContext {
@@ -28,14 +30,8 @@ export async function getServerAuthContext(): Promise<AuthContext | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  // shortcut: allow local UI preview in mock mode when Supabase env is unset
   if (!url || !key) {
-    return {
-      userId: "mock-user-1",
-      email: "demo@homecare.vn",
-      roles: ["ADMIN", "ORGANIZATION"],
-      isMockMode: true,
-    };
+    return null;
   }
 
   const supabase = await createSupabaseServerClient();
@@ -59,7 +55,6 @@ export async function getServerAuthContext(): Promise<AuthContext | null> {
     userId: user.id,
     email: user.email ?? "",
     roles: mergedRoles,
-    isMockMode: false,
   };
 }
 
@@ -70,22 +65,22 @@ export async function requireAdmin(): Promise<AuthContext> {
   return ctx;
 }
 
-export async function getUserMemberships(
-  isMockMode: boolean
-): Promise<OrganizationMembership[]> {
-  if (isMockMode || process.env.NEXT_PUBLIC_USE_MOCK_API !== "false") {
-    return organizationsMockAdapter.listMyMemberships();
+export async function getUserMemberships(): Promise<OrganizationMembership[]> {
+  try {
+    const data = await gatewayFetch<Record<string, unknown>[]>(
+      "/organizations/my"
+    );
+    return extractPageItems(data).map(normalizeMembership);
+  } catch {
+    return [];
   }
-  return gatewayFetch<OrganizationMembership[]>(
-    "/organizations/me/memberships"
-  );
 }
 
 export async function requireOrgContext(): Promise<OrgContext> {
   const ctx = await getServerAuthContext();
   if (!ctx) redirect("/login?next=/org");
 
-  const memberships = await getUserMemberships(ctx.isMockMode);
+  const memberships = await getUserMemberships();
   if (memberships.length === 0 && !hasOrgPortalRole(ctx.roles)) {
     redirect("/register/org");
   }

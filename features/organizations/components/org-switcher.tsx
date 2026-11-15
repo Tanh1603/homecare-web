@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Building2, Check, ChevronsUpDown } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
-import type { OrganizationMembership } from "../contracts/organization";
+import {
+  formatOrgRoleLabel,
+  type OrganizationMembership,
+} from "../contracts/organization";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { cn } from "@/shared/lib/utils";
 
@@ -82,7 +85,7 @@ export function OrgSwitcher({
                 <div className="min-w-0">
                   <p className="truncate font-medium">{m.organizationName}</p>
                   <p className="text-xs text-muted-foreground">
-                    Vai trò: {m.memberRole}
+                    Vai trò: {formatOrgRoleLabel(m.memberRole)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

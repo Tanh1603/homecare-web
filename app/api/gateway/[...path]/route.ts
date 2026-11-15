@@ -21,7 +21,13 @@ async function proxyToGateway(
 
   if (!user) {
     return NextResponse.json(
-      { success: false, code: 401, errorCode: "UNAUTHENTICATED", message: "Unauthorized", data: null },
+      {
+        success: false,
+        code: 401,
+        errorCode: "UNAUTHENTICATED",
+        message: "Unauthorized",
+        data: null,
+      },
       { status: 401 }
     );
   }
@@ -34,16 +40,21 @@ async function proxyToGateway(
   const activeOrgId = cookieStore.get(ACTIVE_ORG_COOKIE)?.value;
 
   const headers = new Headers();
-  headers.set("Content-Type", request.headers.get("content-type") || "application/json");
+  headers.set(
+    "Content-Type",
+    request.headers.get("content-type") || "application/json"
+  );
   headers.set(
     "X-Correlation-Id",
-    request.headers.get("x-correlation-id") || `web-${crypto.randomUUID()}`.slice(0, 64)
+    request.headers.get("x-correlation-id") ||
+      `web-${crypto.randomUUID()}`.slice(0, 64)
   );
   if (session?.access_token) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
   }
-  if (activeOrgId) {
-    headers.set("X-Organization-Id", activeOrgId);
+  const explicitOrgId = request.headers.get("x-organization-id");
+  if (explicitOrgId || activeOrgId) {
+    headers.set("X-Organization-Id", explicitOrgId || activeOrgId || "");
   }
   const idempotencyKey = request.headers.get("idempotency-key");
   if (idempotencyKey) {
@@ -59,20 +70,35 @@ async function proxyToGateway(
       ? undefined
       : await request.text();
 
-  const upstream = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  try {
+    const upstream = await fetch(targetUrl, {
+      method: request.method,
+      headers,
+      body,
+      cache: "no-store",
+    });
 
-  const text = await upstream.text();
-  return new NextResponse(text, {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("content-type") || "application/json",
-    },
-  });
+    const text = await upstream.text();
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("content-type") || "application/json",
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        success: false,
+        code: 502,
+        errorCode: "GATEWAY_UNAVAILABLE",
+        message: "Không thể kết nối tới HomeCare API Gateway",
+        data: null,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 502 }
+    );
+  }
 }
 
 export const GET = proxyToGateway;

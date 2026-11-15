@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
+  --background: #f6f8fb;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #1e40af;
+  --primary: #1d4ed8;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #475569;
   --accent: #eff6ff;
-  --accent-foreground: #1e40af;
+  --accent-foreground: #1d4ed8;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
   --success: #15803d;
@@ -22,9 +22,11 @@
   --warning: #b45309;
   --warning-bg: #fef3c7;
   --border: #e2e8f0;
-  --input: #e2e8f0;
+  --input: #cbd5e1;
   --ring: #2563eb;
   --radius: 0.75rem;
+  --font-geist-sans: "Inter", "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+  --font-geist-mono: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 
 .dark {
@@ -91,6 +93,21 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    caret-color: var(--primary);
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: var(--foreground);
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 

@@ -26,6 +26,14 @@ export interface PaginatedData<T> {
   pagination: PaginationMeta;
 }
 
+export interface PageResponse<T> {
+  items: T[];
+  page?: number;
+  size?: number;
+  totalElements?: number;
+  totalPages?: number;
+}
+
 export class GatewayApiError extends Error {
   readonly status: number;
   readonly errorCode?: string;
@@ -59,4 +67,12 @@ export function unwrapApiResponse<T>(payload: ApiResponse<T>): T {
     });
   }
   return payload.data;
+}
+
+export function extractPageItems<T>(
+  data: { items?: T[] } | T[] | null | undefined
+): T[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data.items) ? data.items : [];
 }

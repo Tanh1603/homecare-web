@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const memberships = await getUserMemberships(ctx.isMockMode);
+  const memberships = await getUserMemberships();
   const target = memberships.find(
     (m) => m.organizationId === parsed.data.organizationId
   );

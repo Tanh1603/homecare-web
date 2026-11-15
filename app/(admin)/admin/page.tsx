@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { Building2, Clock, FolderTree, Users } from "lucide-react";
-import { organizationsMockAdapter } from "@/features/organizations/api/organizations.mock";
+import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
+import { ORGANIZATION_TYPE_LABELS } from "@/features/organizations/contracts/organization";
 import { adminApi } from "@/features/admin/api/admin.adapter";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { StatusBadge } from "@/shared/ui/status-badge";
+import { EmptyState } from "@/shared/ui/empty-state";
 
 export default async function AdminDashboardPage() {
   const [orgs, users, catalog] = await Promise.all([
-    organizationsMockAdapter.listAll(),
+    organizationsServerApi.listAll(),
     adminApi.listUsers(),
     adminApi.listCatalog(),
   ]);
@@ -70,7 +72,7 @@ export default async function AdminDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Danh mục chuẩn
+              Dịch vụ & Linh kiện
             </CardTitle>
             <FolderTree className="h-4 w-4 text-success" />
           </CardHeader>
@@ -81,25 +83,37 @@ export default async function AdminDashboardPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Hồ sơ Organization chờ duyệt gần đây</CardTitle>
+          {pendingOrgs.length > 0 ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/organizations">Xem tất cả</Link>
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           {pendingOrgs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Không có hồ sơ nào đang chờ duyệt.
-            </p>
+            <EmptyState
+              icon={Building2}
+              title="Không có hồ sơ chờ duyệt"
+              description="Tất cả hồ sơ đối tác đã được xử lý hoặc chưa có tổ chức mới đăng ký."
+            />
           ) : (
             <div className="divide-y divide-border">
               {pendingOrgs.map((org) => (
                 <div
                   key={org.id}
-                  className="flex items-center justify-between py-3"
+                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
-                    <p className="text-sm font-medium">{org.name}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {org.name}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      MST: {org.taxCode} · {org.email}
+                      {ORGANIZATION_TYPE_LABELS[org.type] ?? org.type} ·{" "}
+                      {org.city}
+                      {org.taxCode ? ` · MST: ${org.taxCode}` : ""} ·{" "}
+                      {org.phone}
                     </p>
                   </div>
                   <StatusBadge status={org.status} />

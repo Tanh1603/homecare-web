@@ -1,9 +1,9 @@
-import { organizationsMockAdapter } from "@/features/organizations/api/organizations.mock";
+import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
 import { OrganizationsTable } from "@/features/admin/components/organizations-table";
 import { PageHeader } from "@/shared/ui/page-header";
 
 export default async function AdminOrganizationsPage() {
-  const organizations = await organizationsMockAdapter.listAll();
+  const organizations = await organizationsServerApi.listAll();
 
   return (
     <div className="space-y-6">

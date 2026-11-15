@@ -1,9 +1,12 @@
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 import {
   GatewayApiError,
   unwrapApiResponse,
   type ApiResponse,
 } from "./api-envelope";
+
+const ACTIVE_ORG_COOKIE = "hc_active_org_id";
 
 export interface GatewayFetchOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -21,7 +24,7 @@ function createCorrelationId(): string {
 /**
  * Server-only client for Spring Cloud Gateway (/api/v1).
  * Reads the Supabase session JWT from HttpOnly cookies and attaches standard
- * HomeCare correlation, idempotency, and optimistic-locking headers.
+ * HomeCare correlation, organization, idempotency, and optimistic-locking headers.
  */
 export async function gatewayFetch<T>(
   path: string,
@@ -37,6 +40,9 @@ export async function gatewayFetch<T>(
     data: { session },
   } = await supabase.auth.getSession();
 
+  const cookieStore = await cookies();
+  const orgId = options.organizationId ?? cookieStore.get(ACTIVE_ORG_COOKIE)?.value;
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Correlation-Id": createCorrelationId(),
@@ -46,8 +52,8 @@ export async function gatewayFetch<T>(
   if (session?.access_token) {
     headers["Authorization"] = `Bearer ${session.access_token}`;
   }
-  if (options.organizationId) {
-    headers["X-Organization-Id"] = options.organizationId;
+  if (orgId) {
+    headers["X-Organization-Id"] = orgId;
   }
   if (options.idempotencyKey) {
     headers["Idempotency-Key"] = options.idempotencyKey;
@@ -56,12 +62,21 @@ export async function gatewayFetch<T>(
     headers["If-Match"] = options.ifMatch;
   }
 
-  const res = await fetch(url, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    throw new GatewayApiError({
+      message: "Không thể kết nối tới HomeCare API Gateway",
+      status: 502,
+      errorCode: "GATEWAY_UNAVAILABLE",
+    });
+  }
 
   const json = (await res.json().catch(() => null)) as ApiResponse<T> | null;
   if (!json) {

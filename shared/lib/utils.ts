@@ -21,3 +21,17 @@ export function formatDateTime(iso: string): string {
     timeStyle: "short",
   }).format(date);
 }
+
+export function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+export function formatShortId(id: string): string {
+  if (!id) return "—";
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 8).toUpperCase()}`;
+}

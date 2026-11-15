@@ -8,9 +8,14 @@ const STATUS_CONFIG: Record<
   ACTIVE: { label: "Hoạt động", variant: "success" },
   COMPLETED: { label: "Hoàn thành", variant: "success" },
   DELIVERED: { label: "Đã giao", variant: "success" },
+  CONFIRMED: { label: "Đã xác nhận", variant: "success" },
+  PAID: { label: "Đã thanh toán", variant: "success" },
   PENDING: { label: "Chờ duyệt", variant: "warning" },
+  AWAITING_PAYMENT: { label: "Chờ thanh toán", variant: "warning" },
+  UNPAID: { label: "Chưa thanh toán", variant: "warning" },
   IN_PROGRESS: { label: "Đang xử lý", variant: "default" },
   ASSIGNED: { label: "Đã điều phối", variant: "default" },
+  ALLOCATED: { label: "Đã phân bổ", variant: "default" },
   REJECTED: { label: "Từ chối", variant: "destructive" },
   SUSPENDED: { label: "Tạm ngưng", variant: "destructive" },
   CANCELLED: { label: "Đã hủy", variant: "secondary" },
@@ -18,7 +23,8 @@ const STATUS_CONFIG: Record<
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? {
+  const normalized = status.toUpperCase();
+  const cfg = STATUS_CONFIG[normalized] ?? {
     label: status,
     variant: "secondary" as const,
   };

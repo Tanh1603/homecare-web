@@ -1,11 +1,15 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CalendarCheck, Package, ShieldCheck, Users } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
+import { formatOrgRoleLabel } from "@/features/organizations/contracts/organization";
 import { orgOpsApi } from "@/features/org-ops/api/org-ops.adapter";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import { formatVnd } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { Button } from "@/shared/ui/button";
+import { formatShortId, formatVnd } from "@/shared/lib/utils";
 
 export default async function OrgDashboardPage() {
   const ctx = await requireOrgContext();
@@ -25,7 +29,12 @@ export default async function OrgDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title={`Xin chào, ${ctx.activeOrganization.organizationName}`}
-        description={`Vai trò của bạn trong tổ chức: ${ctx.activeOrganization.memberRole}`}
+        description={`Vai trò của bạn trong tổ chức: ${formatOrgRoleLabel(ctx.activeOrganization.memberRole)}`}
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/org/bookings">Xem tất cả lịch hẹn</Link>
+          </Button>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -70,7 +79,7 @@ export default async function OrgDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Bảo hành đang hiệu lực
+              Bảo hành đang quản lý
             </CardTitle>
             <ShieldCheck className="h-4 w-4 text-success" />
           </CardHeader>
@@ -87,30 +96,41 @@ export default async function OrgDashboardPage() {
           <CardTitle>Booking dịch vụ gần đây</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="divide-y divide-border">
-            {bookings.map((b) => (
-              <div
-                key={b.id}
-                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="text-sm font-medium">
-                    {b.id} · {b.serviceName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Khách hàng: {b.customerName} · Thợ:{" "}
-                    {b.technicianName ?? "Chưa phân công"}
-                  </p>
+          {bookings.length === 0 ? (
+            <EmptyState
+              icon={CalendarCheck}
+              title="Chưa có lịch hẹn dịch vụ"
+              description="Khi khách hàng đặt dịch vụ của tổ chức qua ứng dụng, lịch hẹn mới sẽ xuất hiện tại đây."
+            />
+          ) : (
+            <div className="divide-y divide-border">
+              {bookings.slice(0, 6).map((b) => (
+                <div
+                  key={b.id}
+                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        #{formatShortId(b.id)}
+                      </span>{" "}
+                      · {b.serviceName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Khách hàng: {formatShortId(b.customerName)} · Thợ:{" "}
+                      {b.technicianName ?? "Chưa phân công"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium tabular-nums">
+                      {formatVnd(b.totalAmount)}
+                    </span>
+                    <StatusBadge status={b.status} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium tabular-nums">
-                    {formatVnd(b.totalAmount)}
-                  </span>
-                  <StatusBadge status={b.status} />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -16,6 +16,7 @@ export default async function OrgStatusPage() {
 
   const isPending = org.organizationStatus === "PENDING";
   const isRejected = org.organizationStatus === "REJECTED";
+  const reason = org.rejectReason ?? org.rejectionReason;
 
   return (
     <div className="mx-auto max-w-2xl py-8">
@@ -50,9 +51,9 @@ export default async function OrgStatusPage() {
                 <strong>{org.organizationStatus}</strong> và tạm thời chưa thể
                 truy cập các chức năng vận hành.
               </p>
-              {org.rejectionReason ? (
+              {reason ? (
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-                  Lý do: {org.rejectionReason}
+                  Lý do: {reason}
                 </div>
               ) : null}
             </div>
