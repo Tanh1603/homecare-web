@@ -2,28 +2,27 @@ import { redirect } from "next/navigation";
 import { CalendarCheck } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
 import { orgOpsApi } from "@/features/org-ops/api/org-ops.adapter";
+import { OrgBookingsTable } from "@/features/org-ops/components/org-bookings-table";
 import { PageHeader } from "@/shared/ui/page-header";
-import { StatusBadge } from "@/shared/ui/status-badge";
 import { EmptyState } from "@/shared/ui/empty-state";
-import { Card } from "@/shared/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
-import { formatDateTime, formatShortId, formatVnd } from "@/shared/lib/utils";
+import { ServerPagination } from "@/shared/ui/server-pagination";
 
-export default async function OrgBookingsPage() {
+export default async function OrgBookingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const ctx = await requireOrgContext();
   if (ctx.activeOrganization.organizationStatus !== "APPROVED") {
     redirect("/org/status");
   }
 
-  const bookings = await orgOpsApi.listBookings(
-    ctx.activeOrganization.organizationId
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const { items: bookings, pagination } = await orgOpsApi.listBookingsPage(
+    ctx.activeOrganization.organizationId,
+    page,
+    20
   );
 
   return (
@@ -39,45 +38,18 @@ export default async function OrgBookingsPage() {
           description="Danh sách booking của tổ chức đang trống hoặc chưa đồng bộ từ Booking Service."
         />
       ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead>Dịch vụ</TableHead>
-                <TableHead>Kỹ thuật viên</TableHead>
-                <TableHead>Lịch hẹn</TableHead>
-                <TableHead>Tổng tiền</TableHead>
-                <TableHead>Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {bookings.map((b) => (
-                <TableRow key={b.id}>
-                  <TableCell className="font-mono text-xs" title={b.id}>
-                    #{formatShortId(b.id)}
-                  </TableCell>
-                  <TableCell
-                    className="font-mono text-xs text-muted-foreground"
-                    title={b.customerName}
-                  >
-                    {formatShortId(b.customerName)}
-                  </TableCell>
-                  <TableCell className="font-medium">{b.serviceName}</TableCell>
-                  <TableCell>{b.technicianName ?? "Chưa phân công"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDateTime(b.scheduledAt)}
-                  </TableCell>
-                  <TableCell>{formatVnd(b.totalAmount)}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={b.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <>
+          <OrgBookingsTable
+            organizationId={ctx.activeOrganization.organizationId}
+            initialBookings={bookings}
+          />
+          <ServerPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            basePath="/org/bookings"
+          />
+        </>
       )}
     </div>
   );

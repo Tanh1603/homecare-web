@@ -1,5 +1,9 @@
 import { gatewayFetch } from "@/shared/api/gateway-client";
-import { extractPageItems } from "@/shared/api/api-envelope";
+import {
+  extractPageItems,
+  extractPaginationMeta,
+  type PageResponse,
+} from "@/shared/api/api-envelope";
 import {
   normalizeMembership,
   normalizeOrganization,
@@ -11,52 +15,60 @@ import {
 
 export const organizationsServerApi = {
   async listAll(status?: OrganizationStatus): Promise<Organization[]> {
-    try {
-      const path = status
-        ? `/admin/organizations?status=${encodeURIComponent(status)}`
-        : "/admin/organizations";
-      const data = await gatewayFetch<
-        { items?: Record<string, unknown>[] } | Record<string, unknown>[]
-      >(path);
-      return extractPageItems(data).map(normalizeOrganization);
-    } catch {
-      return [];
+    const pageData = await this.listAllPage({ status, page: 1, size: 100 });
+    return pageData.items;
+  },
+
+  async listAllPage(params?: {
+    status?: OrganizationStatus;
+    page?: number;
+    size?: number;
+  }): Promise<PageResponse<Organization>> {
+    const page = params?.page ?? 1;
+    const size = params?.size ?? 20;
+    const query = new URLSearchParams({
+      page: String(page),
+      size: String(size),
+    });
+    if (params?.status) {
+      query.set("status", params.status);
     }
+    const data = await gatewayFetch<
+      PageResponse<Record<string, unknown>> | Record<string, unknown>[]
+    >(`/admin/organizations?${query.toString()}`, {
+      organizationId: null,
+      scope: "personal",
+    });
+    return {
+      items: extractPageItems(data).map(normalizeOrganization),
+      pagination: extractPaginationMeta(data, page, size),
+    };
   },
 
   async listMyMemberships(): Promise<OrganizationMembership[]> {
-    try {
-      const data = await gatewayFetch<Record<string, unknown>[]>(
-        "/organizations/my"
-      );
-      return extractPageItems(data).map(normalizeMembership);
-    } catch {
-      return [];
-    }
+    const data = await gatewayFetch<
+      PageResponse<Record<string, unknown>> | Record<string, unknown>[]
+    >("/organizations/my?page=1&size=100", {
+      organizationId: null,
+      scope: "personal",
+    });
+    return extractPageItems(data).map(normalizeMembership);
   },
 
   async getDetail(id: string): Promise<Organization | null> {
-    try {
-      const data = await gatewayFetch<Record<string, unknown>>(
-        `/organizations/${encodeURIComponent(id)}`
-      );
-      return normalizeOrganization(data);
-    } catch {
-      return null;
-    }
+    const data = await gatewayFetch<Record<string, unknown>>(
+      `/organizations/${encodeURIComponent(id)}`,
+      { organizationId: null, scope: "personal" }
+    );
+    return normalizeOrganization(data);
   },
 
   async listCurrentMembers(
     organizationId: string
   ): Promise<OrganizationMember[]> {
-    try {
-      const data = await gatewayFetch<OrganizationMember[]>(
-        "/organizations/current/members",
-        { organizationId }
-      );
-      return extractPageItems(data);
-    } catch {
-      return [];
-    }
+    const data = await gatewayFetch<
+      PageResponse<OrganizationMember> | OrganizationMember[]
+    >("/organizations/current/members?page=1&size=100", { organizationId });
+    return extractPageItems(data);
   },
 };

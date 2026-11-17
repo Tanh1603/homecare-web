@@ -20,11 +20,37 @@ const STATUS_CONFIG: Record<
   SUSPENDED: { label: "Tạm ngưng", variant: "destructive" },
   CANCELLED: { label: "Đã hủy", variant: "secondary" },
   EXPIRED: { label: "Hết hạn", variant: "secondary" },
+  APPROVED_PENDING_MANUAL_REFUND: {
+    label: "Chờ hoàn tiền thủ công",
+    variant: "warning",
+  },
+  REFUND_SUBMITTED: { label: "Đang xử lý hoàn tiền", variant: "default" },
+  REFUNDED: { label: "Đã hoàn tiền", variant: "success" },
+  REFUND_FAILED: { label: "Hoàn tiền thất bại", variant: "destructive" },
+  MANUAL_REVIEW: { label: "Cần kiểm tra thủ công", variant: "warning" },
 };
 
-export function StatusBadge({ status }: { status: string }) {
+const DOMAIN_STATUS_CONFIG: Record<
+  "booking" | "return",
+  Record<string, { label: string; variant: BadgeProps["variant"] }>
+> = {
+  booking: {
+    REQUESTED: { label: "Đang tìm thợ", variant: "warning" },
+  },
+  return: {
+    REQUESTED: { label: "Chờ duyệt hoàn tiền", variant: "warning" },
+  },
+};
+
+export function StatusBadge({
+  status,
+  domain,
+}: {
+  status: string;
+  domain?: "booking" | "return";
+}) {
   const normalized = status.toUpperCase();
-  const cfg = STATUS_CONFIG[normalized] ?? {
+  const cfg = (domain && DOMAIN_STATUS_CONFIG[domain][normalized]) ?? STATUS_CONFIG[normalized] ?? {
     label: status,
     variant: "secondary" as const,
   };

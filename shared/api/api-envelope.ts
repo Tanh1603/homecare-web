@@ -26,13 +26,7 @@ export interface PaginatedData<T> {
   pagination: PaginationMeta;
 }
 
-export interface PageResponse<T> {
-  items: T[];
-  page?: number;
-  size?: number;
-  totalElements?: number;
-  totalPages?: number;
-}
+export type PageResponse<T> = PaginatedData<T>;
 
 export class GatewayApiError extends Error {
   readonly status: number;
@@ -75,4 +69,21 @@ export function extractPageItems<T>(
   if (!data) return [];
   if (Array.isArray(data)) return data;
   return Array.isArray(data.items) ? data.items : [];
+}
+
+export function extractPaginationMeta<T>(
+  data: Partial<PaginatedData<T>> | T[] | null | undefined,
+  fallbackPage = 1,
+  fallbackSize = 20
+): PaginationMeta {
+  if (!data || Array.isArray(data) || !data.pagination) {
+    const count = Array.isArray(data) ? data.length : 0;
+    return {
+      page: fallbackPage,
+      size: fallbackSize,
+      totalItems: count,
+      totalPages: count > 0 ? 1 : 0,
+    };
+  }
+  return data.pagination;
 }

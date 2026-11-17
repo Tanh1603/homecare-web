@@ -67,9 +67,12 @@ export async function requireAdmin(): Promise<AuthContext> {
 
 export async function getUserMemberships(): Promise<OrganizationMembership[]> {
   try {
-    const data = await gatewayFetch<Record<string, unknown>[]>(
-      "/organizations/my"
-    );
+    const data = await gatewayFetch<
+      { items?: Record<string, unknown>[] } | Record<string, unknown>[]
+    >("/organizations/my?page=1&size=100", {
+      organizationId: null,
+      scope: "personal",
+    });
     return extractPageItems(data).map(normalizeMembership);
   } catch {
     return [];

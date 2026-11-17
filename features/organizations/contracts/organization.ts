@@ -79,6 +79,8 @@ export interface OrganizationMember {
   id: string;
   organizationId: string;
   userId: string;
+  fullName?: string | null;
+  email?: string | null;
   role: OrganizationMemberRole;
   status: string;
   joinedAt: string;
@@ -176,3 +178,13 @@ export const addOrganizationMemberSchema = z.object({
 export type AddOrganizationMemberInput = z.infer<
   typeof addOrganizationMemberSchema
 >;
+
+export const updateOrganizationSchema = z.object({
+  name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
+  phone: z.string().trim().min(9, "Số điện thoại không hợp lệ"),
+  city: z.string().trim().min(2, "Vui lòng nhập tỉnh/thành phố"),
+  address: z.string().trim().min(5, "Địa chỉ tối thiểu 5 ký tự"),
+  description: z.string().trim().optional(),
+});
+
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;

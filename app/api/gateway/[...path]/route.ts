@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
+import {
+  shouldAttachOrganizationHeader,
+  type HomeCareScope,
+} from "@/shared/api/org-header-policy";
 
 const ACTIVE_ORG_COOKIE = "hc_active_org_id";
 
@@ -52,9 +56,18 @@ async function proxyToGateway(
   if (session?.access_token) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
   }
+  const rawScope = request.headers.get("x-homecare-scope")?.toLowerCase();
+  const explicitScope: HomeCareScope | undefined =
+    rawScope === "personal" || rawScope === "organization" ? rawScope : undefined;
+  const attachOrg = shouldAttachOrganizationHeader(
+    request.method,
+    targetPath,
+    explicitScope
+  );
   const explicitOrgId = request.headers.get("x-organization-id");
-  if (explicitOrgId || activeOrgId) {
-    headers.set("X-Organization-Id", explicitOrgId || activeOrgId || "");
+  const resolvedOrgId = attachOrg ? explicitOrgId || activeOrgId : undefined;
+  if (resolvedOrgId) {
+    headers.set("X-Organization-Id", resolvedOrgId);
   }
   const idempotencyKey = request.headers.get("idempotency-key");
   if (idempotencyKey) {
@@ -79,12 +92,19 @@ async function proxyToGateway(
     });
 
     const text = await upstream.text();
+    const responseHeaders = new Headers({
+      "Content-Type":
+        upstream.headers.get("content-type") || "application/json",
+    });
+    for (const headerName of ["etag", "x-correlation-id", "content-disposition"]) {
+      const val = upstream.headers.get(headerName);
+      if (val) {
+        responseHeaders.set(headerName, val);
+      }
+    }
     return new NextResponse(text, {
       status: upstream.status,
-      headers: {
-        "Content-Type":
-          upstream.headers.get("content-type") || "application/json",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return NextResponse.json(

@@ -6,15 +6,27 @@ import {
   type ApiResponse,
 } from "./api-envelope";
 
+import {
+  shouldAttachOrganizationHeader,
+  type HomeCareScope,
+} from "./org-header-policy";
+
 const ACTIVE_ORG_COOKIE = "hc_active_org_id";
 
 export interface GatewayFetchOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
-  organizationId?: string;
+  organizationId?: string | null;
+  scope?: HomeCareScope;
   idempotencyKey?: string;
   ifMatch?: string;
   headers?: Record<string, string>;
+}
+
+export interface GatewayFetchResult<T> {
+  data: T;
+  etag: string | null;
+  correlationId: string | null;
 }
 
 function createCorrelationId(): string {
@@ -26,14 +38,15 @@ function createCorrelationId(): string {
  * Reads the Supabase session JWT from HttpOnly cookies and attaches standard
  * HomeCare correlation, organization, idempotency, and optimistic-locking headers.
  */
-export async function gatewayFetch<T>(
+export async function gatewayFetchWithMeta<T>(
   path: string,
   options: GatewayFetchOptions = {}
-): Promise<T> {
+): Promise<GatewayFetchResult<T>> {
   const baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${baseUrl.replace(/\/$/, "")}${normalizedPath}`;
+  const method = options.method ?? "GET";
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -41,13 +54,24 @@ export async function gatewayFetch<T>(
   } = await supabase.auth.getSession();
 
   const cookieStore = await cookies();
-  const orgId = options.organizationId ?? cookieStore.get(ACTIVE_ORG_COOKIE)?.value;
+  const attachOrg = shouldAttachOrganizationHeader(
+    method,
+    normalizedPath,
+    options.scope
+  );
+  const orgId =
+    options.organizationId !== undefined
+      ? options.organizationId
+      : attachOrg
+        ? cookieStore.get(ACTIVE_ORG_COOKIE)?.value
+        : undefined;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Correlation-Id": createCorrelationId(),
     ...options.headers,
   };
+  delete headers["x-homecare-scope"];
 
   if (session?.access_token) {
     headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -65,7 +89,7 @@ export async function gatewayFetch<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      method: options.method ?? "GET",
+      method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       cache: "no-store",
@@ -96,5 +120,17 @@ export async function gatewayFetch<T>(
     });
   }
 
-  return unwrapApiResponse(json);
+  return {
+    data: unwrapApiResponse(json),
+    etag: res.headers.get("etag"),
+    correlationId: res.headers.get("x-correlation-id"),
+  };
+}
+
+export async function gatewayFetch<T>(
+  path: string,
+  options: GatewayFetchOptions = {}
+): Promise<T> {
+  const { data } = await gatewayFetchWithMeta<T>(path, options);
+  return data;
 }

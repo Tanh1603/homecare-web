@@ -180,7 +180,7 @@ export function OrgMembersPanel({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>User ID</TableHead>
+                  <TableHead>Thành viên</TableHead>
                   <TableHead>Vai trò</TableHead>
                   <TableHead>Ngày tham gia</TableHead>
                   <TableHead>Trạng thái</TableHead>
@@ -191,15 +191,26 @@ export function OrgMembersPanel({
                 {members.map((m) => {
                   const isSelf = m.userId === currentUserId;
                   const busy = busyUserId === m.userId;
+                  const displayName = m.fullName?.trim() || m.email?.trim() || m.userId;
                   return (
                     <TableRow key={m.id || m.userId}>
-                      <TableCell className="font-mono text-xs">
-                        <span>{m.userId}</span>
-                        {isSelf ? (
-                          <Badge variant="secondary" className="ml-2">
-                            Bạn
-                          </Badge>
+                      <TableCell className="text-xs">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-foreground">
+                            {displayName}
+                          </span>
+                          {isSelf ? (
+                            <Badge variant="secondary">Bạn</Badge>
+                          ) : null}
+                        </div>
+                        {m.email && m.fullName ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {m.email}
+                          </p>
                         ) : null}
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          {m.userId}
+                        </p>
                       </TableCell>
                       <TableCell>
                         {canManage && !isSelf ? (

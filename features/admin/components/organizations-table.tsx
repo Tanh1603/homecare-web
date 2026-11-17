@@ -162,6 +162,34 @@ export function OrganizationsTable({
                 Tạm ngưng
               </Button>
             ) : null}
+            {org.status === "SUSPENDED" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyId === org.id}
+                onClick={async () => {
+                  setBusyId(org.id);
+                  try {
+                    const updated = await organizationsApi.reactivate(org.id);
+                    setRows((prev) =>
+                      prev.map((r) => (r.id === org.id ? updated : r))
+                    );
+                    toast.success(`Đã kích hoạt lại "${org.name}"`);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Không thể kích hoạt lại tổ chức"
+                    );
+                  } finally {
+                    setBusyId(null);
+                  }
+                }}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                Kích hoạt lại
+              </Button>
+            ) : null}
           </div>
         );
       },

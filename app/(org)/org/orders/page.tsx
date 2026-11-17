@@ -1,97 +1,107 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Package } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
 import { orgOpsApi } from "@/features/org-ops/api/org-ops.adapter";
+import { OrgOrdersTable } from "@/features/org-ops/components/org-orders-table";
+import { OrgProductsPanel } from "@/features/org-ops/components/org-products-panel";
 import { PageHeader } from "@/shared/ui/page-header";
-import { StatusBadge } from "@/shared/ui/status-badge";
-import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
-import { Card } from "@/shared/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
-import { formatShortId, formatVnd } from "@/shared/lib/utils";
+import { ServerPagination } from "@/shared/ui/server-pagination";
+import { cn } from "@/shared/lib/utils";
 
-export default async function OrgOrdersPage() {
+export default async function OrgOrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; tab?: string }>;
+}) {
   const ctx = await requireOrgContext();
   if (ctx.activeOrganization.organizationStatus !== "APPROVED") {
     redirect("/org/status");
   }
 
-  const orders = await orgOpsApi.listOrders(
-    ctx.activeOrganization.organizationId
-  );
+  const sp = await searchParams;
+  const tab = sp.tab === "products" ? "products" : "orders";
+  const page = Math.max(1, Number(sp.page) || 1);
+  const orgId = ctx.activeOrganization.organizationId;
+
+  const ordersPage =
+    tab === "orders" ? await orgOpsApi.listOrdersPage(orgId, page, 20) : null;
+  const productsPage =
+    tab === "products"
+      ? await orgOpsApi.listProductsPage(orgId, page, 20)
+      : null;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Đơn hàng linh kiện"
-        description="Quản lý đơn hàng vật tư, linh kiện chính hãng và kích hoạt bảo hành."
+        title="Đơn hàng & Kho linh kiện"
+        description="Quản lý đơn hàng vật tư, xác nhận giao hàng và tồn kho sản phẩm."
       />
-      {orders.length === 0 ? (
-        <EmptyState
-          icon={Package}
-          title="Chưa có đơn hàng linh kiện"
-          description="Khi khách hàng đặt mua vật tư thuộc tổ chức, đơn hàng sẽ hiển thị tại đây."
-        />
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã đơn</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead>Sản phẩm</TableHead>
-                <TableHead>SL</TableHead>
-                <TableHead>Thành tiền</TableHead>
-                <TableHead>Thanh toán</TableHead>
-                <TableHead>Bảo hành</TableHead>
-                <TableHead>Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell className="font-mono text-xs" title={o.id}>
-                    #{formatShortId(o.id)}
-                  </TableCell>
-                  <TableCell
-                    className="font-mono text-xs text-muted-foreground"
-                    title={o.buyerName}
-                  >
-                    {formatShortId(o.buyerName)}
-                  </TableCell>
-                  <TableCell className="font-medium">{o.productName}</TableCell>
-                  <TableCell>{o.quantity}</TableCell>
-                  <TableCell>{formatVnd(o.totalAmount)}</TableCell>
-                  <TableCell>
-                    {o.paymentStatus ? (
-                      <StatusBadge status={o.paymentStatus} />
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={o.warrantyActivated ? "success" : "secondary"}
-                    >
-                      {o.warrantyActivated ? "Đã kích hoạt" : "Chưa kích hoạt"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={o.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+
+      <div className="flex items-center gap-2">
+        <Link
+          href="/org/orders"
+          className={cn(
+            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+            tab === "orders"
+              ? "border-primary/30 bg-accent text-accent-foreground"
+              : "border-border bg-card text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Đơn hàng
+        </Link>
+        <Link
+          href="/org/orders?tab=products"
+          className={cn(
+            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+            tab === "products"
+              ? "border-primary/30 bg-accent text-accent-foreground"
+              : "border-border bg-card text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Kho sản phẩm
+        </Link>
+      </div>
+
+      {tab === "orders" && ordersPage ? (
+        ordersPage.items.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title="Chưa có đơn hàng linh kiện"
+            description="Khi khách hàng đặt mua vật tư thuộc tổ chức, đơn hàng sẽ hiển thị tại đây."
+          />
+        ) : (
+          <>
+            <OrgOrdersTable
+              organizationId={orgId}
+              initialOrders={ordersPage.items}
+            />
+            <ServerPagination
+              page={ordersPage.pagination.page}
+              totalPages={ordersPage.pagination.totalPages}
+              totalItems={ordersPage.pagination.totalItems}
+              basePath="/org/orders"
+            />
+          </>
+        )
+      ) : null}
+
+      {tab === "products" && productsPage ? (
+        <>
+          <OrgProductsPanel
+            organizationId={orgId}
+            initialProducts={productsPage.items}
+          />
+          <ServerPagination
+            page={productsPage.pagination.page}
+            totalPages={productsPage.pagination.totalPages}
+            totalItems={productsPage.pagination.totalItems}
+            basePath="/org/orders"
+            searchParams={{ tab: "products" }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

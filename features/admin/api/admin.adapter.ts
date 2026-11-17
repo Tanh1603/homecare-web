@@ -1,5 +1,6 @@
 import {
   extractPageItems,
+  extractPaginationMeta,
   type PageResponse,
 } from "@/shared/api/api-envelope";
 import { gatewayFetch } from "@/shared/api/gateway-client";
@@ -122,57 +123,95 @@ async function listUsersFromSupabaseAdmin(): Promise<AdminUserItem[]> {
 
 export const adminApi = {
   async listUsers(): Promise<AdminUserItem[]> {
+    return (await this.listUsersPage(1, 100)).items;
+  },
+
+  async listUsersPage(
+    page = 1,
+    size = 20
+  ): Promise<PageResponse<AdminUserItem>> {
     try {
-      const data = await gatewayFetch<AdminUserItem[]>("/admin/users");
-      const items = extractPageItems(data);
-      if (items.length > 0) return items;
-    } catch {
-      // Fallback to direct Supabase Auth Admin API when gateway is offline
+      const data = await gatewayFetch<
+        PageResponse<AdminUserItem> | AdminUserItem[]
+      >(`/admin/users?page=${page}&size=${size}`, {
+        organizationId: null,
+        scope: "personal",
+      });
+      return {
+        items: extractPageItems(data),
+        pagination: extractPaginationMeta(data, page, size),
+      };
+    } catch (err) {
+      const fallback = await listUsersFromSupabaseAdmin();
+      if (fallback.length > 0) {
+        return {
+          items: fallback,
+          pagination: {
+            page: 1,
+            size: fallback.length,
+            totalItems: fallback.length,
+            totalPages: 1,
+          },
+        };
+      }
+      throw err;
     }
-    return listUsersFromSupabaseAdmin();
+  },
+
+  async listServicesCatalogPage(
+    page = 1,
+    size = 20
+  ): Promise<PageResponse<CatalogItem>> {
+    const data = await gatewayFetch<
+      PageResponse<BackendServiceOffering> | BackendServiceOffering[]
+    >(`/services?includeInactive=true&page=${page}&size=${size}`, {
+      organizationId: null,
+      scope: "personal",
+    });
+    return {
+      items: extractPageItems(data).map((s) => ({
+        id: s.id,
+        type: "SERVICE" as const,
+        name: s.name,
+        category: s.category,
+        providerName: s.providerName,
+        basePrice: s.basePrice,
+        durationMinutes: s.estimatedDurationMinutes,
+        status: s.active ? "ACTIVE" : "INACTIVE",
+      })),
+      pagination: extractPaginationMeta(data, page, size),
+    };
+  },
+
+  async listProductsCatalogPage(
+    page = 1,
+    size = 20
+  ): Promise<PageResponse<CatalogItem>> {
+    const data = await gatewayFetch<
+      PageResponse<BackendProduct> | BackendProduct[]
+    >(`/products?includeInactive=true&page=${page}&size=${size}`, {
+      organizationId: null,
+      scope: "personal",
+    });
+    return {
+      items: extractPageItems(data).map((p) => ({
+        id: p.id,
+        type: "PRODUCT" as const,
+        name: p.name,
+        category: p.category,
+        providerName: p.merchantName,
+        basePrice: p.unitPrice,
+        status: p.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+      })),
+      pagination: extractPaginationMeta(data, page, size),
+    };
   },
 
   async listCatalog(): Promise<CatalogItem[]> {
-    const [servicesRes, productsRes] = await Promise.allSettled([
-      gatewayFetch<PageResponse<BackendServiceOffering> | BackendServiceOffering[]>(
-        "/services?size=100"
-      ),
-      gatewayFetch<PageResponse<BackendProduct> | BackendProduct[]>(
-        "/products?size=100"
-      ),
+    const [servicesRes, productsRes] = await Promise.all([
+      this.listServicesCatalogPage(1, 100),
+      this.listProductsCatalogPage(1, 100),
     ]);
-
-    const items: CatalogItem[] = [];
-
-    if (servicesRes.status === "fulfilled") {
-      for (const s of extractPageItems(servicesRes.value)) {
-        items.push({
-          id: s.id,
-          type: "SERVICE",
-          name: s.name,
-          category: s.category,
-          providerName: s.providerName,
-          basePrice: s.basePrice,
-          durationMinutes: s.estimatedDurationMinutes,
-          status: s.active ? "ACTIVE" : "SUSPENDED",
-        });
-      }
-    }
-
-    if (productsRes.status === "fulfilled") {
-      for (const p of extractPageItems(productsRes.value)) {
-        items.push({
-          id: p.id,
-          type: "PRODUCT",
-          name: p.name,
-          category: p.category,
-          providerName: p.merchantName,
-          basePrice: p.unitPrice,
-          status: p.status === "ACTIVE" ? "ACTIVE" : "SUSPENDED",
-        });
-      }
-    }
-
-    return items;
+    return [...servicesRes.items, ...productsRes.items];
   },
 };
