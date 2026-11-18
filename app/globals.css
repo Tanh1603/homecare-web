@@ -153,12 +153,113 @@
     background-clip: content-box;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--muted-foreground) 48%, transparent);
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in srgb, var(--muted-foreground) 48%, transparent);
+    }
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
+  @keyframes hc-backdrop-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes hc-backdrop-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes hc-drawer-in {
+    from {
+      opacity: 0.4;
+      transform: translate3d(100%, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes hc-drawer-out {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      opacity: 0;
+      transform: translate3d(100%, 0, 0);
+    }
+  }
+
+  @keyframes hc-dialog-in {
+    from {
+      opacity: 0;
+      transform: translate3d(-50%, -48%, 0) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(-50%, -50%, 0) scale(1);
+    }
+  }
+
+  @keyframes hc-section-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes hc-error-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -3px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  .hc-animate-backdrop-in {
+    animation: hc-backdrop-in 180ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .hc-animate-backdrop-out {
+    animation: hc-backdrop-out 180ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .hc-animate-drawer-in {
+    animation: hc-drawer-in 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .hc-animate-drawer-out {
+    animation: hc-drawer-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
+  .hc-animate-dialog-in {
+    animation: hc-dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .hc-animate-section-in {
+    animation: hc-section-in 200ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .hc-animate-error-in {
+    animation: hc-error-in 150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {

@@ -12,14 +12,9 @@ import {
 } from "@/features/organizations/components/account-provisioning-step";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { ContextInspector } from "@/shared/ui/context-inspector";
+import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -41,7 +36,7 @@ export function OrgTechniciansPanel({
   const router = useRouter();
   const [techs, setTechs] =
     React.useState<OrgTechnicianItem[]>(initialTechnicians);
-  const [modalOpen, setModalOpen] = React.useState(false);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<OrgTechnicianItem | null>(
     null
   );
@@ -53,6 +48,7 @@ export function OrgTechniciansPanel({
   const [specialtiesText, setSpecialtiesText] = React.useState("Điện lạnh");
   const [experienceYears, setExperienceYears] = React.useState("2");
   const [status, setStatus] = React.useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [initialSnapshot, setInitialSnapshot] = React.useState("");
 
   const [scheduleTech, setScheduleTech] =
     React.useState<OrgTechnicianItem | null>(null);
@@ -61,6 +57,15 @@ export function OrgTechniciansPanel({
   const [startTime, setStartTime] = React.useState("");
   const [endTime, setEndTime] = React.useState("");
 
+  const currentSnapshot = JSON.stringify({
+    provisionedId: provisioned?.userId ?? null,
+    fullName,
+    specialtiesText,
+    experienceYears,
+    status,
+  });
+  const isDirty = drawerOpen && currentSnapshot !== initialSnapshot;
+
   function openCreate() {
     setEditTarget(null);
     setProvisioned(null);
@@ -68,17 +73,38 @@ export function OrgTechniciansPanel({
     setSpecialtiesText("Điện lạnh");
     setExperienceYears("2");
     setStatus("ACTIVE");
-    setModalOpen(true);
+    setInitialSnapshot(
+      JSON.stringify({
+        provisionedId: null,
+        fullName: "",
+        specialtiesText: "Điện lạnh",
+        experienceYears: "2",
+        status: "ACTIVE",
+      })
+    );
+    setDrawerOpen(true);
   }
 
   function openEdit(t: OrgTechnicianItem) {
+    const spec = t.specialties.join(", ") || "Điện lạnh";
+    const exp = String(t.experienceYears ?? 0);
+    const st = t.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
     setEditTarget(t);
     setProvisioned(null);
     setFullName(t.fullName);
-    setSpecialtiesText(t.specialties.join(", ") || "Điện lạnh");
-    setExperienceYears(String(t.experienceYears ?? 0));
-    setStatus(t.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
-    setModalOpen(true);
+    setSpecialtiesText(spec);
+    setExperienceYears(exp);
+    setStatus(st);
+    setInitialSnapshot(
+      JSON.stringify({
+        provisionedId: null,
+        fullName: t.fullName,
+        specialtiesText: spec,
+        experienceYears: exp,
+        status: st,
+      })
+    );
+    setDrawerOpen(true);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -139,7 +165,7 @@ export function OrgTechniciansPanel({
         ]);
         toast.success("Đã thêm kỹ thuật viên");
       }
-      setModalOpen(false);
+      setDrawerOpen(false);
       router.refresh();
     } catch (err) {
       toast.error(
@@ -241,7 +267,6 @@ export function OrgTechniciansPanel({
           <TableHeader>
             <TableRow>
               <TableHead>Họ tên</TableHead>
-              <TableHead>Profile ID</TableHead>
               <TableHead>Chuyên môn</TableHead>
               <TableHead>Kinh nghiệm</TableHead>
               <TableHead>Đánh giá</TableHead>
@@ -253,9 +278,6 @@ export function OrgTechniciansPanel({
             {techs.map((t) => (
               <TableRow key={t.id}>
                 <TableCell className="font-medium">{t.fullName}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {t.phone}
-                </TableCell>
                 <TableCell>{t.specialty}</TableCell>
                 <TableCell>
                   {t.experienceYears !== undefined
@@ -263,7 +285,7 @@ export function OrgTechniciansPanel({
                     : "—"}
                 </TableCell>
                 <TableCell>
-                  <span className="inline-flex items-center gap-1 font-medium">
+                  <span className="inline-flex items-center gap-1 font-medium tabular-nums">
                     {t.rating.toFixed(1)}
                     <Star className="h-3.5 w-3.5 fill-warning text-warning" />
                   </span>
@@ -287,6 +309,7 @@ export function OrgTechniciansPanel({
                       onClick={() => openEdit(t)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
+                      Sửa
                     </Button>
                     <Button
                       size="sm"
@@ -304,161 +327,186 @@ export function OrgTechniciansPanel({
         </Table>
       </Card>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editTarget ? "Cập nhật kỹ thuật viên" : "Thêm kỹ thuật viên"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-2 space-y-4">
-            {!editTarget ? (
-              <AccountProvisioningStep
-                organizationId={organizationId}
-                provisioned={provisioned}
-                onProvisioned={(acc) => {
-                  setProvisioned(acc);
-                  if (acc) setFullName(acc.fullName);
-                }}
-              />
-            ) : null}
-            {!editTarget && !provisioned ? (
-              <div className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
-                Bước 2 (Họ tên, chuyên môn, số năm kinh nghiệm) sẽ mở sau khi tạo
-                & xác thực tài khoản ở Bước 1.
-              </div>
-            ) : (
-              <form onSubmit={handleSave} className="space-y-3">
-                {!editTarget ? (
-                  <h3 className="text-sm font-semibold text-foreground">
-                    2. Thông tin kỹ thuật viên
-                  </h3>
-                ) : null}
-                <div className="space-y-1.5">
-                  <Label htmlFor="tech-name">Họ và tên</Label>
-                  <Input
-                    id="tech-name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="tech-spec">
-                    Chuyên môn (phân cách bằng dấu phẩy)
-                  </Label>
-                  <Input
-                    id="tech-spec"
-                    value={specialtiesText}
-                    onChange={(e) => setSpecialtiesText(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="tech-exp">Số năm kinh nghiệm</Label>
-                    <Input
-                      id="tech-exp"
-                      type="number"
-                      min={0}
-                      value={experienceYears}
-                      onChange={(e) => setExperienceYears(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="tech-status">Trạng thái</Label>
-                    <select
-                      id="tech-status"
-                      value={status}
-                      onChange={(e) =>
-                        setStatus(e.target.value as "ACTIVE" | "INACTIVE")
-                      }
-                      className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
-                    >
-                      <option value="ACTIVE">ACTIVE</option>
-                      <option value="INACTIVE">INACTIVE</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setModalOpen(false)}
-                  >
-                    Hủy
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Đang lưu..." : "Lưu"}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(scheduleTech)}
-        onOpenChange={(open) => {
-          if (!open) setScheduleTech(null);
-        }}
+      <FormDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={editTarget ? "Cập nhật kỹ thuật viên" : "Thêm kỹ thuật viên mới"}
+        description={
+          editTarget
+            ? "Điều chỉnh hồ sơ chuyên môn và trạng thái nhận việc của kỹ thuật viên."
+            : "Tạo tài khoản xác thực ở Bước 1, sau đó thiết lập hồ sơ kỹ thuật ở Bước 2."
+        }
+        isDirty={isDirty}
+        saving={saving}
+        submitLabel={editTarget ? "Lưu cập nhật" : "Tạo kỹ thuật viên"}
+        submitDisabled={!editTarget && !provisioned}
+        formId="tech-step2-form"
+        size="lg"
       >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Lịch làm việc — {scheduleTech?.fullName}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <form onSubmit={handleAddSchedule} className="grid gap-2 sm:grid-cols-3">
-              <Input
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+        {!editTarget ? (
+          <AccountProvisioningStep
+            organizationId={organizationId}
+            provisioned={provisioned}
+            onProvisioned={(acc) => {
+              setProvisioned(acc);
+              if (acc) setFullName(acc.fullName);
+            }}
+          />
+        ) : null}
+
+        {!editTarget && !provisioned ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+            Bước 2 (Họ tên, chuyên môn, số năm kinh nghiệm) sẽ mở khóa sau khi
+            hoàn tất tạo tài khoản ở Bước 1.
+          </div>
+        ) : (
+          <form id="tech-step2-form" onSubmit={handleSave} className="space-y-4">
+            <FormSection
+              title={
+                editTarget
+                  ? "Thông tin kỹ thuật viên"
+                  : "2. Thông tin kỹ thuật viên"
+              }
+              description="Chuyên môn và kinh nghiệm phục vụ điều phối lịch hẹn."
+            >
+              <FormField label="Họ và tên" htmlFor="tech-name" required>
+                <Input
+                  id="tech-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </FormField>
+              <FormField
+                label="Chuyên môn"
+                htmlFor="tech-spec"
                 required
-              />
-              <Input
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                required
-              />
+                hint="Phân cách nhiều chuyên môn bằng dấu phẩy (VD: Điện lạnh, Máy giặt)."
+              >
+                <Input
+                  id="tech-spec"
+                  value={specialtiesText}
+                  onChange={(e) => setSpecialtiesText(e.target.value)}
+                  required
+                />
+              </FormField>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField
+                  label="Số năm kinh nghiệm"
+                  htmlFor="tech-exp"
+                  required
+                >
+                  <Input
+                    id="tech-exp"
+                    type="number"
+                    min={0}
+                    value={experienceYears}
+                    onChange={(e) => setExperienceYears(e.target.value)}
+                    required
+                  />
+                </FormField>
+                <FormField label="Trạng thái nhận việc" htmlFor="tech-status">
+                  <select
+                    id="tech-status"
+                    value={status}
+                    onChange={(e) =>
+                      setStatus(e.target.value as "ACTIVE" | "INACTIVE")
+                    }
+                    className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
+                  >
+                    <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
+                    <option value="INACTIVE">Tạm ngưng (INACTIVE)</option>
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+          </form>
+        )}
+      </FormDrawer>
+
+      <ContextInspector
+        open={Boolean(scheduleTech)}
+        onClose={() => setScheduleTech(null)}
+        title={`Lịch làm việc — ${scheduleTech?.fullName ?? ""}`}
+        subtitle="Quản lý các khung giờ sẵn sàng nhận lịch hẹn của kỹ thuật viên."
+        className="max-w-lg"
+      >
+        <form onSubmit={handleAddSchedule} className="space-y-3">
+          <FormSection
+            title="Thêm khung giờ mới"
+            description="Chọn thời gian bắt đầu và kết thúc ca trực."
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField label="Bắt đầu" htmlFor="sched-start" required>
+                <Input
+                  id="sched-start"
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                />
+              </FormField>
+              <FormField label="Kết thúc" htmlFor="sched-end" required>
+                <Input
+                  id="sched-end"
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  required
+                />
+              </FormField>
+            </div>
+            <div className="flex justify-end">
               <Button type="submit" size="sm" disabled={saving}>
+                <Plus className="h-3.5 w-3.5" />
                 Thêm khung giờ
               </Button>
-            </form>
+            </div>
+          </FormSection>
+        </form>
 
-            {loadingSchedules ? (
-              <p className="text-xs text-muted-foreground">Đang tải lịch...</p>
-            ) : schedules.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Chưa có khung giờ làm việc nào.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {schedules.map((w) => (
-                  <div
-                    key={w.id}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
-                  >
-                    <span>
-                      {formatDateTime(w.startTime)} → {formatDateTime(w.endTime)}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDeleteSchedule(w)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold text-muted-foreground">
+            Khung giờ đã đăng ký ({schedules.length})
+          </h3>
+          {loadingSchedules ? (
+            <p className="text-xs text-muted-foreground">
+              Đang tải lịch làm việc...
+            </p>
+          ) : schedules.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Chưa có khung giờ làm việc nào.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {schedules.map((w) => (
+                <div
+                  key={w.id}
+                  className="flex items-center justify-between rounded-lg border border-border bg-surface-secondary/50 px-3 py-2 text-xs"
+                >
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {formatDateTime(w.startTime)} →{" "}
+                      {formatDateTime(w.endTime)}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {w.available ? "Sẵn sàng" : "Đã khóa"}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeleteSchedule(w)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ContextInspector>
     </div>
   );
 }

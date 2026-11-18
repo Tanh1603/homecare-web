@@ -11,10 +11,11 @@ import {
   type OrganizationMemberRole,
 } from "../contracts/organization";
 import { organizationsApi } from "../api";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import { StatusBadge } from "@/shared/ui/status-badge";
 
@@ -38,18 +39,35 @@ export function OrgProfileForm({
     currentUserRole === "OWNER" ||
     currentUserRole === "MANAGER";
 
-  const [name, setName] = React.useState(
-    initialOrganization?.name ?? organizationName
-  );
-  const [phone, setPhone] = React.useState(initialOrganization?.phone ?? "");
-  const [city, setCity] = React.useState(initialOrganization?.city ?? "");
-  const [address, setAddress] = React.useState(
-    initialOrganization?.address ?? ""
-  );
-  const [description, setDescription] = React.useState(
-    initialOrganization?.description ?? ""
-  );
+  const [savedValues, setSavedValues] = React.useState({
+    name: initialOrganization?.name ?? organizationName,
+    phone: initialOrganization?.phone ?? "",
+    city: initialOrganization?.city ?? "",
+    address: initialOrganization?.address ?? "",
+    description: initialOrganization?.description ?? "",
+  });
+
+  const [name, setName] = React.useState(savedValues.name);
+  const [phone, setPhone] = React.useState(savedValues.phone);
+  const [city, setCity] = React.useState(savedValues.city);
+  const [address, setAddress] = React.useState(savedValues.address);
+  const [description, setDescription] = React.useState(savedValues.description);
   const [saving, setSaving] = React.useState(false);
+
+  const isDirty =
+    name !== savedValues.name ||
+    phone !== savedValues.phone ||
+    city !== savedValues.city ||
+    address !== savedValues.address ||
+    description !== savedValues.description;
+
+  function handleReset() {
+    setName(savedValues.name);
+    setPhone(savedValues.phone);
+    setCity(savedValues.city);
+    setAddress(savedValues.address);
+    setDescription(savedValues.description);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,11 +91,19 @@ export function OrgProfileForm({
         organizationId,
         parsed.data
       );
-      setName(updated.name);
-      setPhone(updated.phone);
-      setCity(updated.city);
-      setAddress(updated.address ?? "");
-      setDescription(updated.description ?? "");
+      const nextSaved = {
+        name: updated.name,
+        phone: updated.phone,
+        city: updated.city,
+        address: updated.address ?? "",
+        description: updated.description ?? "",
+      };
+      setSavedValues(nextSaved);
+      setName(nextSaved.name);
+      setPhone(nextSaved.phone);
+      setCity(nextSaved.city);
+      setAddress(nextSaved.address);
+      setDescription(nextSaved.description);
       toast.success("Đã cập nhật hồ sơ tổ chức");
       router.refresh();
     } catch (err) {
@@ -92,11 +118,20 @@ export function OrgProfileForm({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>{name || organizationName}</CardTitle>
-        <StatusBadge status={initialOrganization?.status ?? organizationStatus} />
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>{name || organizationName}</CardTitle>
+          {isDirty ? (
+            <Badge variant="warning" className="hc-animate-error-in">
+              Chưa lưu thay đổi
+            </Badge>
+          ) : null}
+        </div>
+        <StatusBadge
+          status={initialOrganization?.status ?? organizationStatus}
+        />
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 text-sm sm:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Vai trò của bạn</p>
             <p className="mt-0.5 font-medium">
@@ -104,7 +139,7 @@ export function OrgProfileForm({
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Loại hình (chỉ đọc)</p>
+            <p className="text-xs text-muted-foreground">Loại hình pháp lý</p>
             <p className="mt-0.5 font-medium">
               {initialOrganization
                 ? ORGANIZATION_TYPE_LABELS[initialOrganization.type] ??
@@ -113,78 +148,89 @@ export function OrgProfileForm({
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Mã số thuế (chỉ đọc)</p>
+            <p className="text-xs text-muted-foreground">Mã số thuế</p>
             <p className="mt-0.5 font-medium">
               {initialOrganization?.taxCode ?? "—"}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Organization ID</p>
-            <code className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-xs">
-              {organizationId}
-            </code>
-          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="org-name">Tên tổ chức</Label>
-              <Input
-                id="org-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={!canEdit || saving}
-                required
-              />
+          <FormSection
+            title="Thông tin liên hệ & Địa điểm"
+            description="Thông tin hiển thị cho khách hàng khi đặt lịch dịch vụ hoặc mua linh kiện."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Tên tổ chức" htmlFor="org-name" required>
+                <Input
+                  id="org-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={!canEdit || saving}
+                  required
+                />
+              </FormField>
+              <FormField label="Số điện thoại" htmlFor="org-phone" required>
+                <Input
+                  id="org-phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={!canEdit || saving}
+                  required
+                />
+              </FormField>
+              <FormField label="Tỉnh / Thành phố" htmlFor="org-city" required>
+                <Input
+                  id="org-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  disabled={!canEdit || saving}
+                  required
+                />
+              </FormField>
+              <FormField label="Địa chỉ trụ sở" htmlFor="org-address" required>
+                <Input
+                  id="org-address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  disabled={!canEdit || saving}
+                  required
+                />
+              </FormField>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="org-phone">Số điện thoại</Label>
-              <Input
-                id="org-phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+            <FormField
+              label="Mô tả tổ chức"
+              htmlFor="org-description"
+              hint="Giới thiệu thế mạnh dịch vụ, khu vực phục vụ và cam kết bảo hành."
+            >
+              <Textarea
+                id="org-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 disabled={!canEdit || saving}
-                required
+                rows={3}
+                placeholder="Giới thiệu dịch vụ, khu vực phục vụ..."
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="org-city">Tỉnh / Thành phố</Label>
-              <Input
-                id="org-city"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                disabled={!canEdit || saving}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="org-address">Địa chỉ trụ sở</Label>
-              <Input
-                id="org-address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                disabled={!canEdit || saving}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="org-description">Mô tả tổ chức</Label>
-            <Textarea
-              id="org-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={!canEdit || saving}
-              rows={3}
-              placeholder="Giới thiệu dịch vụ, khu vực phục vụ..."
-            />
-          </div>
+            </FormField>
+          </FormSection>
 
           {canEdit ? (
-            <div className="flex justify-end">
-              <Button type="submit" disabled={saving}>
+            <div className="flex items-center justify-end gap-2">
+              {isDirty ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={handleReset}
+                >
+                  Khôi phục
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                loading={saving}
+                disabled={saving || !isDirty}
+              >
                 {saving ? "Đang lưu..." : "Lưu thay đổi"}
               </Button>
             </div>

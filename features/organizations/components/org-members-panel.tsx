@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Trash2, UserPlus, Users } from "lucide-react";
+import { Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   addOrganizationMemberSchema,
@@ -17,7 +17,7 @@ import {
 } from "./account-provisioning-step";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Label } from "@/shared/ui/label";
+import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -44,6 +44,7 @@ export function OrgMembersPanel({
 }) {
   const [members, setMembers] =
     React.useState<OrganizationMember[]>(initialMembers);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [provisioned, setProvisioned] =
     React.useState<ProvisionedAccountInfo | null>(null);
   const [role, setRole] = React.useState<(typeof ORG_ROLES)[number]>("ORG_STAFF");
@@ -55,6 +56,12 @@ export function OrgMembersPanel({
     currentUserRole === "ORG_ADMIN" ||
     currentUserRole === "OWNER" ||
     currentUserRole === "MANAGER";
+
+  function openAddDrawer() {
+    setProvisioned(null);
+    setRole("ORG_STAFF");
+    setDrawerOpen(true);
+  }
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
@@ -77,9 +84,17 @@ export function OrgMembersPanel({
         organizationId,
         parsed.data
       );
-      setMembers((prev) => [...prev, created]);
+      setMembers((prev) => [
+        ...prev,
+        {
+          ...created,
+          fullName: created.fullName || provisioned.fullName,
+          email: created.email || provisioned.email,
+        },
+      ]);
       setProvisioned(null);
       setRole("ORG_STAFF");
+      setDrawerOpen(false);
       toast.success("Đã thêm thành viên vào tổ chức");
     } catch (err) {
       toast.error(
@@ -132,68 +147,23 @@ export function OrgMembersPanel({
 
   return (
     <Card>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-base">
-          Thành viên tổ chức ({members.length})
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Quản lý danh sách nhân sự trực thuộc và phân quyền trong tổ chức.
-        </p>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <div className="space-y-1">
+          <CardTitle className="text-base">
+            Thành viên tổ chức ({members.length})
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Quản lý danh sách nhân sự trực thuộc và phân quyền trong tổ chức.
+          </p>
+        </div>
+        {canManage ? (
+          <Button size="sm" onClick={openAddDrawer}>
+            <Plus className="h-4 w-4" />
+            Thêm thành viên
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-6">
-        {canManage ? (
-          <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr] lg:items-start">
-            <AccountProvisioningStep
-              organizationId={organizationId}
-              provisioned={provisioned}
-              onProvisioned={setProvisioned}
-            />
-            <form
-              onSubmit={handleAddMember}
-              className="space-y-3 rounded-lg border border-border bg-secondary/35 p-4"
-            >
-              <div className="space-y-0.5">
-                <h3 className="text-sm font-semibold text-foreground">
-                  2. Gán vai trò trong tổ chức
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {provisioned
-                    ? "Chọn vai trò và xác nhận thêm thành viên."
-                    : "Hoàn tất Bước 1 để mở khóa bước này."}
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="member-role">Vai trò</Label>
-                <select
-                  id="member-role"
-                  value={role}
-                  disabled={!provisioned}
-                  onChange={(e) =>
-                    setRole(e.target.value as (typeof ORG_ROLES)[number])
-                  }
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                >
-                  {ORG_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {formatOrgRoleLabel(r)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end pt-1">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={submitting || !provisioned}
-                >
-                  <UserPlus className="h-4 w-4" />
-                  {submitting ? "Đang thêm..." : "Thêm vào tổ chức"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        ) : null}
-
         {members.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -216,7 +186,8 @@ export function OrgMembersPanel({
                 {members.map((m) => {
                   const isSelf = m.userId === currentUserId;
                   const busy = busyUserId === m.userId;
-                  const displayName = m.fullName?.trim() || m.email?.trim() || m.userId;
+                  const displayName =
+                    m.fullName?.trim() || m.email?.trim() || "Thành viên";
                   return (
                     <TableRow key={m.id || m.userId}>
                       <TableCell className="text-xs">
@@ -237,7 +208,7 @@ export function OrgMembersPanel({
                       <TableCell>
                         {canManage && !isSelf ? (
                           <select
-                            aria-label={`Vai trò của ${m.userId}`}
+                            aria-label={`Vai trò của ${displayName}`}
                             value={m.role}
                             disabled={busy}
                             onChange={(e) =>
@@ -294,6 +265,60 @@ export function OrgMembersPanel({
           </div>
         )}
       </CardContent>
+
+      {canManage ? (
+        <FormDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          title="Thêm thành viên vào tổ chức"
+          description="Tạo tài khoản xác thực ở Bước 1, sau đó phân quyền vai trò ở Bước 2."
+          isDirty={Boolean(provisioned)}
+          saving={submitting}
+          submitLabel="Thêm vào tổ chức"
+          submitDisabled={!provisioned}
+          formId="member-step2-form"
+          size="lg"
+        >
+          <AccountProvisioningStep
+            organizationId={organizationId}
+            provisioned={provisioned}
+            onProvisioned={setProvisioned}
+          />
+
+          <form
+            id="member-step2-form"
+            onSubmit={handleAddMember}
+            className="space-y-4"
+          >
+            <FormSection
+              title="2. Gán vai trò trong tổ chức"
+              description={
+                provisioned
+                  ? "Chọn vai trò vận hành và xác nhận thêm vào tổ chức."
+                  : "Hoàn tất Bước 1 để mở khóa lựa chọn vai trò."
+              }
+            >
+              <FormField label="Vai trò" htmlFor="member-role" required>
+                <select
+                  id="member-role"
+                  value={role}
+                  disabled={!provisioned}
+                  onChange={(e) =>
+                    setRole(e.target.value as (typeof ORG_ROLES)[number])
+                  }
+                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                >
+                  {ORG_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {formatOrgRoleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </FormSection>
+          </form>
+        </FormDrawer>
+      ) : null}
     </Card>
   );
 }

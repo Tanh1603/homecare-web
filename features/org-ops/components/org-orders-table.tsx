@@ -9,12 +9,7 @@ import { orgOpsHttpApi } from "../api/org-ops.http";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { ContextInspector } from "@/shared/ui/context-inspector";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -124,94 +119,88 @@ export function OrgOrdersTable({
         </Table>
       </Card>
 
-      <Dialog
+      <ContextInspector
         open={Boolean(selectedOrder)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedOrder(null);
-        }}
+        onClose={() => setSelectedOrder(null)}
+        title={`Chi tiết đơn hàng #${formatShortId(selectedOrder?.id ?? "")}`}
+        subtitle="Danh sách dòng sản phẩm và trạng thái xác nhận giao hàng."
+        className="max-w-xl"
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              Chi tiết đơn hàng #{formatShortId(selectedOrder?.id ?? "")}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedOrder ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Khách hàng
-                  </span>
-                  <p className="font-medium">{selectedOrder.buyerName}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Địa chỉ giao hàng
-                  </span>
-                  <p className="font-medium">
-                    {selectedOrder.shippingAddress ?? "—"}
-                  </p>
-                </div>
+        {selectedOrder ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Khách hàng
+                </span>
+                <p className="font-medium">{selectedOrder.buyerName}</p>
               </div>
-
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Sản phẩm</TableHead>
-                      <TableHead>SL</TableHead>
-                      <TableHead>Đơn giá</TableHead>
-                      <TableHead>Giao hàng</TableHead>
-                      <TableHead className="text-right">Thao tác</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedOrder.lines.map((line) => {
-                      const canFulfill =
-                        selectedOrder.paymentStatus === "PAID" &&
-                        line.fulfillmentStatus !== "DELIVERED" &&
-                        line.fulfillmentStatus !== "RETURNED";
-                      return (
-                        <TableRow key={line.id}>
-                          <TableCell className="font-medium">
-                            {line.productName}
-                          </TableCell>
-                          <TableCell>{line.quantity}</TableCell>
-                          <TableCell>{formatVnd(line.unitPrice)}</TableCell>
-                          <TableCell>
-                            <StatusBadge status={line.fulfillmentStatus} />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {canFulfill ? (
-                              <Button
-                                size="sm"
-                                disabled={busyLineId === line.id}
-                                onClick={() =>
-                                  handleFulfill(selectedOrder.id, line.id)
-                                }
-                              >
-                                <Truck className="h-3.5 w-3.5" />
-                                {busyLineId === line.id
-                                  ? "Đang xử lý..."
-                                  : "Xác nhận đã giao"}
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                —
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Địa chỉ giao hàng
+                </span>
+                <p className="font-medium">
+                  {selectedOrder.shippingAddress ?? "—"}
+                </p>
               </div>
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sản phẩm</TableHead>
+                    <TableHead>SL</TableHead>
+                    <TableHead>Đơn giá</TableHead>
+                    <TableHead>Giao hàng</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedOrder.lines.map((line) => {
+                    const canFulfill =
+                      selectedOrder.paymentStatus === "PAID" &&
+                      line.fulfillmentStatus !== "DELIVERED" &&
+                      line.fulfillmentStatus !== "RETURNED";
+                    return (
+                      <TableRow key={line.id}>
+                        <TableCell className="font-medium">
+                          {line.productName}
+                        </TableCell>
+                        <TableCell>{line.quantity}</TableCell>
+                        <TableCell>{formatVnd(line.unitPrice)}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={line.fulfillmentStatus} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {canFulfill ? (
+                            <Button
+                              size="sm"
+                              disabled={busyLineId === line.id}
+                              onClick={() =>
+                                handleFulfill(selectedOrder.id, line.id)
+                              }
+                            >
+                              <Truck className="h-3.5 w-3.5" />
+                              {busyLineId === line.id
+                                ? "Đang xử lý..."
+                                : "Xác nhận đã giao"}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        ) : null}
+      </ContextInspector>
     </>
   );
 }

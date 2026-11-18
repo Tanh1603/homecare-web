@@ -5,12 +5,7 @@ import { Eye } from "lucide-react";
 import type { OrgWarrantyItem } from "../api/org-ops.adapter";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { ContextInspector } from "@/shared/ui/context-inspector";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -79,50 +74,45 @@ export function OrgWarrantiesTable({
         </Table>
       </Card>
 
-      <Dialog
+      <ContextInspector
         open={Boolean(selected)}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null);
-        }}
+        onClose={() => setSelected(null)}
+        title={`Chi tiết phiếu bảo hành #${formatShortId(selected?.id ?? "")}`}
+        subtitle="Thông tin phạm vi bảo hành và thời hạn hiệu lực."
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Chi tiết phiếu bảo hành #{formatShortId(selected?.id ?? "")}
-            </DialogTitle>
-          </DialogHeader>
-          {selected ? (
-            <div className="space-y-3 text-sm">
+        {selected ? (
+          <div className="space-y-3.5 text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Chủ sở hữu</p>
+              <p className="font-medium">{selected.customerName}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Đơn vị bảo hành</p>
+              <p className="font-medium">{selected.providerName ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Phạm vi / Ghi chú</p>
+              <p className="font-medium">
+                {selected.coverageSummary ||
+                  selected.notes ||
+                  selected.deviceOrPart}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-muted-foreground">Chủ sở hữu</p>
-                <p className="font-medium">{selected.customerName}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Đơn vị bảo hành</p>
-                <p className="font-medium">{selected.providerName ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Phạm vi / Ghi chú</p>
+                <p className="text-xs text-muted-foreground">Bắt đầu</p>
                 <p className="font-medium">
-                  {selected.coverageSummary || selected.notes || selected.deviceOrPart}
+                  {selected.startsOn ? formatDate(selected.startsOn) : "—"}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Bắt đầu</p>
-                  <p className="font-medium">
-                    {selected.startsOn ? formatDate(selected.startsOn) : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Hết hạn</p>
-                  <p className="font-medium">{formatDate(selected.expiresAt)}</p>
-                </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Hết hạn</p>
+                <p className="font-medium">{formatDate(selected.expiresAt)}</p>
               </div>
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+          </div>
+        ) : null}
+      </ContextInspector>
     </>
   );
 }

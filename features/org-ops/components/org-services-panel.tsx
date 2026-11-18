@@ -9,13 +9,12 @@ import { orgOpsHttpApi } from "../api/org-ops.http";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+  FormDrawer,
+  FormField,
+  FormSection,
+  focusFirstInvalidField,
+} from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
 import {
@@ -28,6 +27,24 @@ import {
 } from "@/shared/ui/table";
 import { formatVnd } from "@/shared/lib/utils";
 
+interface ServiceFormValues {
+  name: string;
+  category: string;
+  basePrice: string;
+  duration: string;
+  description: string;
+  active: boolean;
+}
+
+const DEFAULT_SERVICE_FORM: ServiceFormValues = {
+  name: "",
+  category: "Điện lạnh",
+  basePrice: "250000",
+  duration: "60",
+  description: "",
+  active: true,
+};
+
 export function OrgServicesPanel({
   organizationId,
   initialServices,
@@ -38,52 +55,93 @@ export function OrgServicesPanel({
   const router = useRouter();
   const [services, setServices] =
     React.useState<OrgServiceItem[]>(initialServices);
-  const [modalOpen, setModalOpen] = React.useState(false);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<OrgServiceItem | null>(
     null
   );
+  const [form, setForm] = React.useState<ServiceFormValues>(
+    DEFAULT_SERVICE_FORM
+  );
+  const [initialForm, setInitialForm] = React.useState<ServiceFormValues>(
+    DEFAULT_SERVICE_FORM
+  );
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [saving, setSaving] = React.useState(false);
 
-  const [name, setName] = React.useState("");
-  const [category, setCategory] = React.useState("Điện lạnh");
-  const [basePrice, setBasePrice] = React.useState("250000");
-  const [duration, setDuration] = React.useState("60");
-  const [description, setDescription] = React.useState("");
-  const [active, setActive] = React.useState(true);
+  const isDirty = React.useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(initialForm),
+    [form, initialForm]
+  );
+
+  function updateField<K extends keyof ServiceFormValues>(
+    key: K,
+    value: ServiceFormValues[K]
+  ) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    if (errors[key]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }
 
   function openCreate() {
     setEditTarget(null);
-    setName("");
-    setCategory("Điện lạnh");
-    setBasePrice("250000");
-    setDuration("60");
-    setDescription("");
-    setActive(true);
-    setModalOpen(true);
+    setForm(DEFAULT_SERVICE_FORM);
+    setInitialForm(DEFAULT_SERVICE_FORM);
+    setErrors({});
+    setDrawerOpen(true);
   }
 
   function openEdit(s: OrgServiceItem) {
+    const vals: ServiceFormValues = {
+      name: s.name,
+      category: s.category,
+      basePrice: String(s.basePrice),
+      duration: String(s.estimatedDurationMinutes),
+      description: s.description ?? "",
+      active: s.active,
+    };
     setEditTarget(s);
-    setName(s.name);
-    setCategory(s.category);
-    setBasePrice(String(s.basePrice));
-    setDuration(String(s.estimatedDurationMinutes));
-    setDescription(s.description ?? "");
-    setActive(s.active);
-    setModalOpen(true);
+    setForm(vals);
+    setInitialForm(vals);
+    setErrors({});
+    setDrawerOpen(true);
   }
 
-  async function handleSave(e: React.FormEvent) {
+  function validateForm(): boolean {
+    const nextErrors: Record<string, string> = {};
+    if (!form.name.trim()) nextErrors.name = "Vui lòng nhập tên dịch vụ";
+    if (!form.category.trim()) nextErrors.category = "Vui lòng nhập danh mục";
+    const price = Number(form.basePrice);
+    if (!Number.isFinite(price) || price < 0) {
+      nextErrors.basePrice = "Giá niêm yết không hợp lệ";
+    }
+    const dur = Number(form.duration);
+    if (!Number.isFinite(dur) || dur < 15) {
+      nextErrors.duration = "Thời lượng tối thiểu 15 phút";
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!validateForm()) {
+      focusFirstInvalidField(e.currentTarget);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
-        name: name.trim(),
-        category: category.trim(),
-        description: description.trim() || undefined,
-        basePrice: Math.max(0, Number(basePrice) || 0),
-        estimatedDurationMinutes: Math.max(15, Number(duration) || 60),
-        active,
+        name: form.name.trim(),
+        category: form.category.trim(),
+        description: form.description.trim() || undefined,
+        basePrice: Math.max(0, Number(form.basePrice) || 0),
+        estimatedDurationMinutes: Math.max(15, Number(form.duration) || 60),
+        active: form.active,
       };
       if (editTarget) {
         const updated = await orgOpsHttpApi.updateService(
@@ -110,7 +168,7 @@ export function OrgServicesPanel({
         ]);
         toast.success("Đã tạo dịch vụ mới");
       }
-      setModalOpen(false);
+      setDrawerOpen(false);
       router.refresh();
     } catch (err) {
       toast.error(
@@ -158,11 +216,21 @@ export function OrgServicesPanel({
           <TableBody>
             {services.map((s) => (
               <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.name}</TableCell>
+                <TableCell className="max-w-xs">
+                  <p className="font-medium truncate">{s.name}</p>
+                  {s.description ? (
+                    <p
+                      className="truncate text-xs text-muted-foreground"
+                      title={s.description}
+                    >
+                      {s.description}
+                    </p>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-muted-foreground">
                   {s.category}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="text-muted-foreground tabular-nums">
                   {s.estimatedDurationMinutes
                     ? `${s.estimatedDurationMinutes} phút`
                     : "—"}
@@ -181,6 +249,7 @@ export function OrgServicesPanel({
                       onClick={() => openEdit(s)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
+                      Sửa
                     </Button>
                     <Button
                       size="sm"
@@ -198,92 +267,116 @@ export function OrgServicesPanel({
         </Table>
       </Card>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editTarget ? "Cập nhật dịch vụ" : "Thêm dịch vụ mới"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSave} className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="svc-name">Tên dịch vụ</Label>
+      <FormDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={editTarget ? "Cập nhật dịch vụ" : "Thêm dịch vụ mới"}
+        description="Thiết lập thông tin danh mục, thời lượng và đơn giá niêm yết của dịch vụ."
+        isDirty={isDirty}
+        saving={saving}
+        submitLabel={editTarget ? "Lưu cập nhật" : "Tạo dịch vụ"}
+        onSubmit={handleSave}
+        size="lg"
+      >
+        <FormSection
+          title="Thông tin dịch vụ"
+          description="Tên hiển thị trên danh mục đặt lịch và nhóm chuyên môn."
+        >
+          <FormField
+            label="Tên dịch vụ"
+            htmlFor="svc-name"
+            required
+            error={errors.name}
+          >
+            <Input
+              id="svc-name"
+              value={form.name}
+              onChange={(e) => updateField("name", e.target.value)}
+              placeholder="VD: Bảo dưỡng & vệ sinh điều hòa treo tường"
+              required
+            />
+          </FormField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField
+              label="Danh mục"
+              htmlFor="svc-cat"
+              required
+              error={errors.category}
+            >
               <Input
-                id="svc-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="svc-cat"
+                value={form.category}
+                onChange={(e) => updateField("category", e.target.value)}
                 required
               />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="svc-cat">Danh mục</Label>
-                <Input
-                  id="svc-cat"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="svc-price">Giá niêm yết (VNĐ)</Label>
-                <Input
-                  id="svc-price"
-                  type="number"
-                  min={0}
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="svc-dur">Thời lượng (phút)</Label>
-                <Input
-                  id="svc-dur"
-                  type="number"
-                  min={15}
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="svc-active">Trạng thái</Label>
-                <select
-                  id="svc-active"
-                  value={active ? "ACTIVE" : "INACTIVE"}
-                  onChange={(e) => setActive(e.target.value === "ACTIVE")}
-                  className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
-                >
-                  <option value="ACTIVE">Đang hoạt động</option>
-                  <option value="INACTIVE">Tạm ngưng</option>
-                </select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="svc-desc">Mô tả</Label>
-              <Textarea
-                id="svc-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setModalOpen(false)}
+            </FormField>
+            <FormField label="Trạng thái hiển thị" htmlFor="svc-active">
+              <select
+                id="svc-active"
+                value={form.active ? "ACTIVE" : "INACTIVE"}
+                onChange={(e) =>
+                  updateField("active", e.target.value === "ACTIVE")
+                }
+                className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
               >
-                Hủy
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? "Đang lưu..." : "Lưu"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Tạm ngưng</option>
+              </select>
+            </FormField>
+          </div>
+          <FormField
+            label="Mô tả quy trình"
+            htmlFor="svc-desc"
+            hint="Các hạng mục công việc bao gồm trong gói dịch vụ."
+          >
+            <Textarea
+              id="svc-desc"
+              value={form.description}
+              onChange={(e) => updateField("description", e.target.value)}
+              rows={3}
+              placeholder="Mô tả chi tiết phạm vi kiểm tra, vệ sinh, vật tư đi kèm..."
+            />
+          </FormField>
+        </FormSection>
+
+        <FormSection
+          title="Định giá & Thời lượng dự kiến"
+          description="Cơ sở báo giá ban đầu và phân bổ khung lịch cho kỹ thuật viên."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField
+              label="Giá niêm yết (VNĐ)"
+              htmlFor="svc-price"
+              required
+              error={errors.basePrice}
+            >
+              <Input
+                id="svc-price"
+                type="number"
+                min={0}
+                value={form.basePrice}
+                onChange={(e) => updateField("basePrice", e.target.value)}
+                required
+              />
+            </FormField>
+            <FormField
+              label="Thời lượng (phút)"
+              htmlFor="svc-dur"
+              required
+              error={errors.duration}
+            >
+              <Input
+                id="svc-dur"
+                type="number"
+                min={15}
+                value={form.duration}
+                onChange={(e) => updateField("duration", e.target.value)}
+                required
+              />
+            </FormField>
+          </div>
+        </FormSection>
+      </FormDrawer>
     </div>
   );
 }

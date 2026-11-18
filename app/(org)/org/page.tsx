@@ -152,7 +152,7 @@ export default async function OrgDashboardPage() {
                         · {b.serviceName}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Khách hàng: {formatShortId(b.customerName)} · Thợ:{" "}
+                        Khách hàng: {b.customerName} · Thợ:{" "}
                         {b.technicianName ?? "Chưa phân công"}
                       </p>
                     </div>

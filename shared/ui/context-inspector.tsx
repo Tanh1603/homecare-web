@@ -44,12 +44,12 @@ export function ContextInspector({
       aria-label={title}
     >
       <div
-        className="fixed inset-0 bg-slate-950/45 backdrop-blur-[1px] transition-opacity duration-150"
+        className="fixed inset-0 bg-slate-950/45 backdrop-blur-[1px] hc-animate-backdrop-in"
         onClick={onClose}
       />
       <aside
         className={cn(
-          "relative z-10 flex h-[100dvh] w-full max-w-md flex-col bg-surface border-l border-border shadow-2xl overflow-hidden",
+          "relative z-10 flex h-[100dvh] w-full max-w-md flex-col bg-surface border-l border-border shadow-2xl overflow-hidden hc-animate-drawer-in",
           className
         )}
       >

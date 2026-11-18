@@ -21,7 +21,7 @@ export default async function OrgSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cài đặt tổ chức"
-        description="Thông tin pháp lý tổ chức và quản lý thành viên trong organization_members."
+        description="Thông tin pháp lý tổ chức và quản lý danh sách thành viên."
       />
       <OrgProfileForm
         organizationId={orgId}

@@ -24,8 +24,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
+import { FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 
 export default function RegisterOrganizationPage() {
   const router = useRouter();
@@ -120,110 +121,123 @@ export default function RegisterOrganizationPage() {
           ) : null}
 
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="name">Tên tổ chức / Doanh nghiệp</Label>
-                <Input
-                  id="name"
-                  placeholder="VD: Điện Lạnh Bách Khoa Pro"
-                  {...form.register("name")}
-                />
-                {form.formState.errors.name ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.name.message}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="type">Loại hình tổ chức</Label>
-                <select
-                  id="type"
-                  {...form.register("type")}
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <FormSection
+              title="Thông tin pháp lý & Liên hệ"
+              description="Điền chính xác thông tin doanh nghiệp để Admin đối chiếu phê duyệt."
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  label="Tên tổ chức / Doanh nghiệp"
+                  htmlFor="name"
+                  required
+                  error={form.formState.errors.name?.message}
+                  className="sm:col-span-2"
                 >
-                  {ORGANIZATION_TYPES.map((orgType) => (
-                    <option key={orgType} value={orgType}>
-                      {ORGANIZATION_TYPE_LABELS[orgType]}
-                    </option>
-                  ))}
-                </select>
-                {form.formState.errors.type ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.type.message}
-                  </p>
-                ) : null}
-              </div>
+                  <Input
+                    id="name"
+                    aria-invalid={Boolean(form.formState.errors.name) || undefined}
+                    placeholder="VD: Điện Lạnh Bách Khoa Pro"
+                    {...form.register("name")}
+                  />
+                </FormField>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="city">Tỉnh / Thành phố</Label>
-                <Input
-                  id="city"
-                  placeholder="TP. Hồ Chí Minh / Hà Nội"
-                  {...form.register("city")}
-                />
-                {form.formState.errors.city ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.city.message}
-                  </p>
-                ) : null}
-              </div>
+                <FormField
+                  label="Loại hình tổ chức"
+                  htmlFor="type"
+                  required
+                  error={form.formState.errors.type?.message}
+                >
+                  <select
+                    id="type"
+                    {...form.register("type")}
+                    className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {ORGANIZATION_TYPES.map((orgType) => (
+                      <option key={orgType} value={orgType}>
+                        {ORGANIZATION_TYPE_LABELS[orgType]}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="phone">Số điện thoại liên hệ</Label>
-                <Input
-                  id="phone"
-                  placeholder="0901234567"
-                  {...form.register("phone")}
-                />
-                {form.formState.errors.phone ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.phone.message}
-                  </p>
-                ) : null}
-              </div>
+                <FormField
+                  label="Tỉnh / Thành phố"
+                  htmlFor="city"
+                  required
+                  error={form.formState.errors.city?.message}
+                >
+                  <Input
+                    id="city"
+                    aria-invalid={Boolean(form.formState.errors.city) || undefined}
+                    placeholder="TP. Hồ Chí Minh / Hà Nội"
+                    {...form.register("city")}
+                  />
+                </FormField>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="taxCode">Mã số thuế (tuỳ chọn)</Label>
-                <Input
-                  id="taxCode"
-                  placeholder="0109283746"
-                  {...form.register("taxCode")}
-                />
-                {form.formState.errors.taxCode ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.taxCode.message}
-                  </p>
-                ) : null}
-              </div>
+                <FormField
+                  label="Số điện thoại liên hệ"
+                  htmlFor="phone"
+                  required
+                  error={form.formState.errors.phone?.message}
+                >
+                  <Input
+                    id="phone"
+                    aria-invalid={Boolean(form.formState.errors.phone) || undefined}
+                    placeholder="0901234567"
+                    {...form.register("phone")}
+                  />
+                </FormField>
 
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="address">Địa chỉ trụ sở</Label>
-                <Input
-                  id="address"
-                  placeholder="Số nhà, tên đường, phường/xã, quận/huyện"
-                  {...form.register("address")}
-                />
-                {form.formState.errors.address ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.address.message}
-                  </p>
-                ) : null}
-              </div>
+                <FormField
+                  label="Mã số thuế"
+                  htmlFor="taxCode"
+                  hint="Tuỳ chọn đối với cá nhân hành nghề."
+                  error={form.formState.errors.taxCode?.message}
+                >
+                  <Input
+                    id="taxCode"
+                    placeholder="0109283746"
+                    {...form.register("taxCode")}
+                  />
+                </FormField>
 
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="description">Giới thiệu năng lực (tuỳ chọn)</Label>
-                <textarea
-                  id="description"
-                  rows={3}
-                  placeholder="Mô tả nhóm thiết bị chuyên môn, khu vực phục vụ và đội ngũ kỹ thuật..."
-                  {...form.register("description")}
-                  className="flex w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground shadow-2xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-            </div>
+                <FormField
+                  label="Địa chỉ trụ sở"
+                  htmlFor="address"
+                  required
+                  error={form.formState.errors.address?.message}
+                  className="sm:col-span-2"
+                >
+                  <Input
+                    id="address"
+                    aria-invalid={Boolean(form.formState.errors.address) || undefined}
+                    placeholder="Số nhà, tên đường, phường/xã, quận/huyện"
+                    {...form.register("address")}
+                  />
+                </FormField>
 
-            <Button type="submit" className="w-full" disabled={submitting}>
+                <FormField
+                  label="Giới thiệu năng lực"
+                  htmlFor="description"
+                  hint="Mô tả nhóm thiết bị chuyên môn, khu vực phục vụ và đội ngũ kỹ thuật."
+                  className="sm:col-span-2"
+                >
+                  <Textarea
+                    id="description"
+                    rows={3}
+                    placeholder="Mô tả nhóm thiết bị chuyên môn, khu vực phục vụ và đội ngũ kỹ thuật..."
+                    {...form.register("description")}
+                  />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <Button
+              type="submit"
+              className="w-full"
+              loading={submitting}
+              disabled={submitting}
+            >
               {submitting ? "Đang gửi hồ sơ..." : "Nộp hồ sơ đăng ký"}
             </Button>
           </form>

@@ -43,7 +43,6 @@ export default async function AdminTechniciansPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Kỹ thuật viên</TableHead>
-                  <TableHead>Profile ID</TableHead>
                   <TableHead>Chuyên môn</TableHead>
                   <TableHead>Kinh nghiệm</TableHead>
                   <TableHead>Đánh giá</TableHead>
@@ -54,9 +53,6 @@ export default async function AdminTechniciansPage({
                 {technicians.map((t) => (
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">{t.fullName}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {t.phone}
-                    </TableCell>
                     <TableCell>{t.specialty}</TableCell>
                     <TableCell>
                       {t.experienceYears !== undefined

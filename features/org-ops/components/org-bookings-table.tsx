@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { ContextInspector } from "@/shared/ui/context-inspector";
 import {
   Dialog,
   DialogContent,
@@ -350,137 +351,131 @@ export function OrgBookingsTable({
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <ContextInspector
         open={Boolean(detailTarget)}
-        onOpenChange={(open) => {
-          if (!open) setDetailTarget(null);
-        }}
+        onClose={() => setDetailTarget(null)}
+        title={`Chi tiết lịch hẹn #${formatShortId(detailTarget?.id ?? "")}`}
+        subtitle={detailTarget?.serviceName}
+        className="max-w-lg"
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              Chi tiết lịch hẹn #{formatShortId(detailTarget?.id ?? "")}
-            </DialogTitle>
-          </DialogHeader>
-          {detailTarget ? (
-            <div className="space-y-4 text-sm">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <span className="text-xs text-muted-foreground">Khách hàng</span>
-                  <p className="font-medium">
-                    {detailTarget.requesterName ||
-                      detailTarget.requesterProfileId}
-                  </p>
-                </div>
+        {detailTarget ? (
+          <div className="space-y-4 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <span className="text-xs text-muted-foreground">Khách hàng</span>
+                <p className="font-medium">
+                  {detailTarget.requesterName ||
+                    detailTarget.requesterProfileId}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Kỹ thuật viên
+                </span>
+                <p className="font-medium">
+                  {detailTarget.assignedTechnicianName ?? "Chưa phân công"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Địa chỉ</span>
+                <p className="font-medium">{detailTarget.address || "—"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Báo giá</span>
+                <p className="font-medium">
+                  {formatVnd(detailTarget.quotedPrice)}
+                </p>
+              </div>
+              {detailTarget.preferredStart ? (
                 <div>
                   <span className="text-xs text-muted-foreground">
-                    Kỹ thuật viên
+                    Lịch hẹn mong muốn
                   </span>
                   <p className="font-medium">
-                    {detailTarget.assignedTechnicianName ?? "Chưa phân công"}
+                    {formatDateTime(detailTarget.preferredStart)}
                   </p>
                 </div>
+              ) : null}
+              {detailTarget.createdAt ? (
                 <div>
-                  <span className="text-xs text-muted-foreground">Địa chỉ</span>
-                  <p className="font-medium">{detailTarget.address || "—"}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">Báo giá</span>
+                  <span className="text-xs text-muted-foreground">
+                    Ngày tạo
+                  </span>
                   <p className="font-medium">
-                    {formatVnd(detailTarget.quotedPrice)}
+                    {formatDateTime(detailTarget.createdAt)}
                   </p>
                 </div>
-                {detailTarget.preferredStart ? (
-                  <div>
-                    <span className="text-xs text-muted-foreground">
-                      Lịch hẹn mong muốn
-                    </span>
-                    <p className="font-medium">
-                      {formatDateTime(detailTarget.preferredStart)}
-                    </p>
-                  </div>
-                ) : null}
-                {detailTarget.createdAt ? (
-                  <div>
-                    <span className="text-xs text-muted-foreground">
-                      Ngày tạo
-                    </span>
-                    <p className="font-medium">
-                      {formatDateTime(detailTarget.createdAt)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="font-semibold">
-                  Tiến độ & minh chứng công việc
-                </h3>
-                {loadingDetail ? (
-                  <p className="text-xs text-muted-foreground">
-                    Đang tải tiến độ...
-                  </p>
-                ) : (detailTarget.workUpdates?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Chưa có cập nhật công việc nào.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto">
-                    {detailTarget.workUpdates?.map((wu) => (
-                      <div
-                        key={wu.id}
-                        className="rounded-lg border border-border p-3 space-y-2"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{wu.kind}</Badge>
-                            {wu.extraCost && wu.extraCost > 0 ? (
-                              <Badge variant="warning">
-                                Phát sinh: {formatVnd(wu.extraCost)} (
-                                {wu.extraCostStatus ?? "PENDING"})
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDateTime(wu.createdAt)}
-                          </span>
-                        </div>
-                        {wu.note ? (
-                          <p className="text-xs text-muted-foreground">
-                            {wu.note}
-                          </p>
-                        ) : null}
-                        {wu.evidence && wu.evidence.length > 0 ? (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {wu.evidence.map((ev) =>
-                              ev.signedUrl ? (
-                                <a
-                                  key={ev.id}
-                                  href={ev.signedUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="block rounded border border-border overflow-hidden hover:opacity-85"
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={ev.signedUrl}
-                                    alt="Minh chứng công việc"
-                                    className="h-16 w-16 object-cover"
-                                  />
-                                </a>
-                              ) : null
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              ) : null}
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+
+            <div className="space-y-2">
+              <h3 className="font-semibold">
+                Tiến độ & minh chứng công việc
+              </h3>
+              {loadingDetail ? (
+                <p className="text-xs text-muted-foreground">
+                  Đang tải tiến độ...
+                </p>
+              ) : (detailTarget.workUpdates?.length ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Chưa có cập nhật công việc nào.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {detailTarget.workUpdates?.map((wu) => (
+                    <div
+                      key={wu.id}
+                      className="rounded-lg border border-border p-3 space-y-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{wu.kind}</Badge>
+                          {wu.extraCost && wu.extraCost > 0 ? (
+                            <Badge variant="warning">
+                              Phát sinh: {formatVnd(wu.extraCost)} (
+                              {wu.extraCostStatus ?? "PENDING"})
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(wu.createdAt)}
+                        </span>
+                      </div>
+                      {wu.note ? (
+                        <p className="text-xs text-muted-foreground">
+                          {wu.note}
+                        </p>
+                      ) : null}
+                      {wu.evidence && wu.evidence.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {wu.evidence.map((ev) =>
+                            ev.signedUrl ? (
+                              <a
+                                key={ev.id}
+                                href={ev.signedUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block rounded border border-border overflow-hidden hover:opacity-85"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={ev.signedUrl}
+                                  alt="Minh chứng công việc"
+                                  className="h-16 w-16 object-cover"
+                                />
+                              </a>
+                            ) : null
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </ContextInspector>
 
       <Dialog
         open={Boolean(cancelTarget)}

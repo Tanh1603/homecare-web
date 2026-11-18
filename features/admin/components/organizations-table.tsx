@@ -14,6 +14,7 @@ import { DataTable } from "@/shared/ui/data-table";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { ContextInspector } from "@/shared/ui/context-inspector";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { cn, formatDateTime, formatShortId } from "@/shared/lib/utils";
+import { cn, formatDateTime } from "@/shared/lib/utils";
 
 type StatusFilter = "ALL" | OrganizationStatus;
 
@@ -242,94 +243,73 @@ export function OrganizationsTable({
         emptyMessage="Không có hồ sơ tổ chức nào khớp bộ lọc."
       />
 
-      <Dialog
+      <ContextInspector
         open={Boolean(detailTarget)}
-        onOpenChange={(open) => {
-          if (!open) setDetailTarget(null);
-        }}
+        onClose={() => setDetailTarget(null)}
+        title={`Hồ sơ tổ chức: ${detailTarget?.name ?? ""}`}
+        subtitle="Chi tiết pháp lý, thông tin liên hệ và trạng thái kiểm duyệt."
+        className="max-w-lg"
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Chi tiết tổ chức: {detailTarget?.name}</DialogTitle>
-          </DialogHeader>
-          {detailTarget ? (
-            <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <span className="text-xs text-muted-foreground">Loại hình</span>
-                <p className="font-medium">
-                  {ORGANIZATION_TYPE_LABELS[detailTarget.type] ??
-                    detailTarget.type}
-                </p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Trạng thái</span>
-                <div className="mt-0.5">
-                  <StatusBadge status={detailTarget.status} />
-                </div>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Mã số thuế
-                </span>
-                <p className="font-medium">{detailTarget.taxCode || "—"}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Điện thoại
-                </span>
-                <p className="font-medium">{detailTarget.phone || "—"}</p>
-              </div>
-              <div className="sm:col-span-2">
-                <span className="text-xs text-muted-foreground">Địa chỉ</span>
-                <p className="font-medium">
-                  {detailTarget.address || detailTarget.city || "—"}
-                  {detailTarget.address && detailTarget.city
-                    ? `, ${detailTarget.city}`
-                    : ""}
-                </p>
-              </div>
-              <div className="sm:col-span-2">
-                <span className="text-xs text-muted-foreground">Mô tả</span>
-                <p className="font-medium whitespace-pre-wrap">
-                  {detailTarget.description || "—"}
-                </p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Chủ sở hữu (Owner ID)
-                </span>
-                <p
-                  className="font-mono text-xs"
-                  title={detailTarget.ownerUserId}
-                >
-                  {detailTarget.ownerUserId
-                    ? formatShortId(detailTarget.ownerUserId)
-                    : "—"}
-                </p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Ngày tạo / Cập nhật
-                </span>
-                <p className="text-xs">
-                  {formatDateTime(detailTarget.createdAt)} ·{" "}
-                  {formatDateTime(detailTarget.updatedAt)}
-                </p>
-              </div>
-              {detailTarget.rejectReason ? (
-                <div className="sm:col-span-2">
-                  <span className="text-xs text-muted-foreground">
-                    Lý do từ chối / Tạm ngưng
-                  </span>
-                  <p className="font-medium text-destructive">
-                    {detailTarget.rejectReason}
-                  </p>
-                </div>
-              ) : null}
+        {detailTarget ? (
+          <div className="grid gap-3.5 text-sm sm:grid-cols-2">
+            <div>
+              <span className="text-xs text-muted-foreground">Loại hình</span>
+              <p className="font-medium">
+                {ORGANIZATION_TYPE_LABELS[detailTarget.type] ??
+                  detailTarget.type}
+              </p>
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+            <div>
+              <span className="text-xs text-muted-foreground">Trạng thái</span>
+              <div className="mt-0.5">
+                <StatusBadge status={detailTarget.status} />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Mã số thuế</span>
+              <p className="font-medium">{detailTarget.taxCode || "—"}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Điện thoại</span>
+              <p className="font-medium">{detailTarget.phone || "—"}</p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Địa chỉ</span>
+              <p className="font-medium">
+                {detailTarget.address || detailTarget.city || "—"}
+                {detailTarget.address && detailTarget.city
+                  ? `, ${detailTarget.city}`
+                  : ""}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Mô tả</span>
+              <p className="font-medium whitespace-pre-wrap">
+                {detailTarget.description || "—"}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">
+                Ngày tạo / Cập nhật
+              </span>
+              <p className="text-xs">
+                {formatDateTime(detailTarget.createdAt)} ·{" "}
+                {formatDateTime(detailTarget.updatedAt)}
+              </p>
+            </div>
+            {detailTarget.rejectReason ? (
+              <div className="sm:col-span-2">
+                <span className="text-xs text-muted-foreground">
+                  Lý do từ chối / Tạm ngưng
+                </span>
+                <p className="font-medium text-destructive">
+                  {detailTarget.rejectReason}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </ContextInspector>
 
       <Dialog
         open={Boolean(rejectTarget)}

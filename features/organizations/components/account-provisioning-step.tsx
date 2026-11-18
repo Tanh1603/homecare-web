@@ -71,7 +71,7 @@ export function AccountProvisioningStep({
 
   if (provisioned) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 px-4 py-3">
+      <div className="hc-animate-section-in flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
           <div className="min-w-0 text-sm">
@@ -102,7 +102,7 @@ export function AccountProvisioningStep({
   return (
     <form
       onSubmit={handleCreateAccount}
-      className="space-y-3 rounded-lg border border-border bg-secondary/35 p-4"
+      className="hc-animate-section-in space-y-3 rounded-lg border border-border bg-secondary/35 p-4"
     >
       <div className="space-y-0.5">
         <h3 className="text-sm font-semibold text-foreground">
@@ -149,8 +149,14 @@ export function AccountProvisioningStep({
         </div>
       </div>
       <div className="flex justify-end pt-1">
-        <Button type="submit" size="sm" variant="outline" disabled={creating}>
-          <UserPlus className="h-4 w-4" />
+        <Button
+          type="submit"
+          size="sm"
+          variant="outline"
+          loading={creating}
+          disabled={creating}
+        >
+          {!creating ? <UserPlus className="h-4 w-4" /> : null}
           {creating ? "Đang tạo tài khoản..." : "Tạo & xác thực tài khoản"}
         </Button>
       </div>
