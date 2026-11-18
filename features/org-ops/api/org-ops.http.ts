@@ -56,6 +56,8 @@ export interface BookingDetailDto {
   status: string;
   allocationStatus: string;
   quotedPrice: number;
+  preferredStart?: string | null;
+  createdAt?: string;
   version?: number;
   workUpdates?: BookingWorkUpdateDto[];
 }
@@ -301,10 +303,12 @@ export const orgOpsHttpApi = {
       name: string;
       category: string;
       brand?: string;
+      productType?: string;
       unitPrice: number;
       warrantyMonths?: number;
       returnWindowDays?: number;
       description?: string;
+      imageUrl?: string;
       status: "ACTIVE" | "INACTIVE";
     }
   ): Promise<OrgProductItem> {
@@ -325,10 +329,12 @@ export const orgOpsHttpApi = {
       name: string;
       category: string;
       brand: string;
+      productType: string;
       unitPrice: number;
       warrantyMonths: number;
       returnWindowDays: number;
       description: string;
+      imageUrl: string;
       status: "ACTIVE" | "INACTIVE";
     }>
   ): Promise<OrgProductItem> {

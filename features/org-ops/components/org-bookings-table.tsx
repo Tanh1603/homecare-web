@@ -140,6 +140,8 @@ export function OrgBookingsTable({
       status: b.status,
       allocationStatus: "",
       quotedPrice: b.totalAmount,
+      preferredStart: b.scheduledAt,
+      createdAt: b.createdAt,
       workUpdates: [],
     });
     try {
@@ -213,7 +215,12 @@ export function OrgBookingsTable({
                   <TableCell>{b.serviceName}</TableCell>
                   <TableCell>{b.technicianName ?? "Chưa phân công"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {formatDateTime(b.scheduledAt)}
+                    <p>{formatDateTime(b.scheduledAt)}</p>
+                    {b.createdAt ? (
+                      <p className="text-[11px] opacity-75">
+                        Tạo: {formatDateTime(b.createdAt)}
+                      </p>
+                    ) : null}
                   </TableCell>
                   <TableCell>{formatVnd(b.totalAmount)}</TableCell>
                   <TableCell>
@@ -383,6 +390,26 @@ export function OrgBookingsTable({
                     {formatVnd(detailTarget.quotedPrice)}
                   </p>
                 </div>
+                {detailTarget.preferredStart ? (
+                  <div>
+                    <span className="text-xs text-muted-foreground">
+                      Lịch hẹn mong muốn
+                    </span>
+                    <p className="font-medium">
+                      {formatDateTime(detailTarget.preferredStart)}
+                    </p>
+                  </div>
+                ) : null}
+                {detailTarget.createdAt ? (
+                  <div>
+                    <span className="text-xs text-muted-foreground">
+                      Ngày tạo
+                    </span>
+                    <p className="font-medium">
+                      {formatDateTime(detailTarget.createdAt)}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-2">

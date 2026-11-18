@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Eye, EyeOff, Wrench } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { extractRolesFromJwt, isAdminRole } from "@/shared/auth/roles";
 import { createSupabaseBrowserClient } from "@/shared/lib/supabase/client";
 import { Button } from "@/shared/ui/button";
 import {
@@ -27,11 +29,15 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-function resolveSafeRedirect(nextParam: string | null): string {
-  if (!nextParam || !nextParam.startsWith("/") || nextParam.startsWith("//")) {
-    return "/org";
+function resolveSafeRedirect(nextParam: string | null, roles: string[]): string {
+  const admin = isAdminRole(roles);
+  if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    if ((nextParam === "/admin" || nextParam.startsWith("/admin/")) && !admin) {
+      return "/org";
+    }
+    return nextParam;
   }
-  return nextParam;
+  return admin ? "/admin" : "/org";
 }
 
 function LoginFormCard() {
@@ -41,7 +47,7 @@ function LoginFormCard() {
   const [showPassword, setShowPassword] = React.useState(false);
   const [authError, setAuthError] = React.useState<string | null>(null);
 
-  const nextTarget = resolveSafeRedirect(searchParams.get("next"));
+  const nextParam = searchParams.get("next");
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -53,7 +59,7 @@ function LoginFormCard() {
     setAuthError(null);
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
       });
@@ -62,8 +68,9 @@ function LoginFormCard() {
         toast.error(error.message);
         return;
       }
+      const roles = extractRolesFromJwt(data.session?.access_token);
       toast.success("Đăng nhập thành công");
-      router.push(nextTarget);
+      router.push(resolveSafeRedirect(nextParam, roles));
       router.refresh();
     } catch (err) {
       const msg =
@@ -82,9 +89,16 @@ function LoginFormCard() {
       <CardHeader className="space-y-2 text-center">
         <Link
           href="/"
-          className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs"
+          className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl overflow-hidden shadow-xs"
         >
-          <Wrench className="h-5 w-5" />
+          <Image
+            src="/homecare_logo.png"
+            alt="HomeCare Logo"
+            width={48}
+            height={48}
+            className="h-12 w-12 object-contain"
+            priority
+          />
         </Link>
         <CardTitle className="text-xl">Đăng nhập HomeCare Portal</CardTitle>
         <CardDescription>

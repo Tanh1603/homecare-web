@@ -19,6 +19,15 @@ export interface CatalogItem {
   type: "DEVICE" | "SERVICE" | "PRODUCT";
   name: string;
   category: string;
+  description?: string;
+  sku?: string;
+  brand?: string;
+  productType?: string;
+  warrantyMonths?: number;
+  returnWindowDays?: number;
+  imageUrl?: string | null;
+  availableQty?: number;
+  reservedQty?: number;
   providerName?: string;
   basePrice?: number;
   durationMinutes?: number;
@@ -45,8 +54,14 @@ interface BackendProduct {
   name: string;
   category: string;
   brand?: string;
+  productType?: string;
+  warrantyMonths?: number;
+  returnWindowDays?: number;
+  description?: string;
+  imageUrl?: string | null;
   unitPrice: number;
   availableQty: number;
+  reservedQty?: number;
   status: string;
 }
 
@@ -59,8 +74,11 @@ interface SupabaseAdminUserRaw {
   app_metadata?: Record<string, unknown>;
 }
 
-function resolveSupabaseRole(user: SupabaseAdminUserRaw): string {
-  const candidates: string[] = [];
+function resolveSupabaseRole(
+  user: SupabaseAdminUserRaw,
+  dbRoles: string[] = []
+): string {
+  const candidates: string[] = [...dbRoles];
   const appRoles = user.app_metadata?.roles;
   const appUserRoles = user.app_metadata?.user_roles;
   const metaRole = user.user_metadata?.role;
@@ -89,19 +107,49 @@ async function listUsersFromSupabaseAdmin(): Promise<AdminUserItem[]> {
   if (!supabaseUrl || !secretKey) return [];
 
   try {
-    const res = await fetch(
-      `${supabaseUrl.replace(/\/$/, "")}/auth/v1/admin/users?page=1&per_page=100`,
-      {
-        headers: {
-          apikey: secretKey,
-          Authorization: `Bearer ${secretKey}`,
-        },
-        cache: "no-store",
-      }
-    );
+    const base = supabaseUrl.replace(/\/$/, "");
+    const res = await fetch(`${base}/auth/v1/admin/users?page=1&per_page=100`, {
+      headers: {
+        apikey: secretKey,
+        Authorization: `Bearer ${secretKey}`,
+      },
+      cache: "no-store",
+    });
     if (!res.ok) return [];
     const json = (await res.json()) as { users?: SupabaseAdminUserRaw[] };
     const users = Array.isArray(json.users) ? json.users : [];
+    const dbRolesByUser = new Map<string, string[]>();
+    if (users.length > 0) {
+      try {
+        const ids = users.map((u) => u.id).join(",");
+        const rolesRes = await fetch(
+          `${base}/rest/v1/user_roles?user_id=in.(${ids})&select=user_id,roles(code)`,
+          {
+            headers: {
+              apikey: secretKey,
+              Authorization: `Bearer ${secretKey}`,
+            },
+            cache: "no-store",
+          }
+        );
+        if (rolesRes.ok) {
+          const roleRows = (await rolesRes.json()) as Array<{
+            user_id?: string;
+            roles?: { code?: string } | null;
+          }>;
+          for (const row of roleRows) {
+            const code = row.roles?.code?.trim();
+            if (row.user_id && code) {
+              const list = dbRolesByUser.get(row.user_id) ?? [];
+              list.push(code);
+              dbRolesByUser.set(row.user_id, list);
+            }
+          }
+        }
+      } catch {
+        // Fallback to metadata-only roles if PostgREST lookup fails
+      }
+    }
     return users.map((u) => {
       const email = u.email ?? "";
       const metaName =
@@ -111,7 +159,7 @@ async function listUsersFromSupabaseAdmin(): Promise<AdminUserItem[]> {
         id: u.id,
         fullName: metaName?.trim() || email.split("@")[0] || u.id,
         email,
-        role: resolveSupabaseRole(u),
+        role: resolveSupabaseRole(u, dbRolesByUser.get(u.id) ?? []),
         status: u.banned_until ? "SUSPENDED" : "ACTIVE",
         createdAt: u.created_at ?? new Date().toISOString(),
       };
@@ -174,6 +222,7 @@ export const adminApi = {
         type: "SERVICE" as const,
         name: s.name,
         category: s.category,
+        description: s.description,
         providerName: s.providerName,
         basePrice: s.basePrice,
         durationMinutes: s.estimatedDurationMinutes,
@@ -199,6 +248,15 @@ export const adminApi = {
         type: "PRODUCT" as const,
         name: p.name,
         category: p.category,
+        description: p.description,
+        sku: p.sku,
+        brand: p.brand,
+        productType: p.productType,
+        warrantyMonths: p.warrantyMonths,
+        returnWindowDays: p.returnWindowDays,
+        imageUrl: p.imageUrl,
+        availableQty: p.availableQty,
+        reservedQty: p.reservedQty,
         providerName: p.merchantName,
         basePrice: p.unitPrice,
         status: p.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",

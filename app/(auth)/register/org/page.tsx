@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Building2, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import {
   ORGANIZATION_TYPES,
   ORGANIZATION_TYPE_LABELS,
@@ -73,9 +74,14 @@ export default function RegisterOrganizationPage() {
       <Card className="w-full max-w-xl shadow-sm">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Building2 className="h-5 w-5" />
-            </div>
+            <Image
+              src="/homecare_logo.png"
+              alt="HomeCare Logo"
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-xl object-contain"
+              priority
+            />
             <Link
               href="/"
               className="text-xs font-medium text-muted-foreground hover:text-foreground"

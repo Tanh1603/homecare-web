@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
-import { CheckCircle2, PauseCircle, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, PauseCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   ORGANIZATION_TYPE_LABELS,
@@ -22,7 +22,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { cn } from "@/shared/lib/utils";
+import { cn, formatDateTime, formatShortId } from "@/shared/lib/utils";
 
 type StatusFilter = "ALL" | OrganizationStatus;
 
@@ -42,6 +42,9 @@ export function OrganizationsTable({
   const [rows, setRows] = React.useState<Organization[]>(initialData);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
   const [rejectTarget, setRejectTarget] = React.useState<Organization | null>(
+    null
+  );
+  const [detailTarget, setDetailTarget] = React.useState<Organization | null>(
     null
   );
   const [reason, setReason] = React.useState("");
@@ -127,6 +130,14 @@ export function OrganizationsTable({
         const disabled = busyId === org.id;
         return (
           <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDetailTarget(org)}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Chi tiết
+            </Button>
             {org.status !== "APPROVED" ? (
               <Button
                 size="sm"
@@ -230,6 +241,95 @@ export function OrganizationsTable({
         searchPlaceholder="Tìm tên tổ chức, MST, thành phố..."
         emptyMessage="Không có hồ sơ tổ chức nào khớp bộ lọc."
       />
+
+      <Dialog
+        open={Boolean(detailTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDetailTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Chi tiết tổ chức: {detailTarget?.name}</DialogTitle>
+          </DialogHeader>
+          {detailTarget ? (
+            <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-xs text-muted-foreground">Loại hình</span>
+                <p className="font-medium">
+                  {ORGANIZATION_TYPE_LABELS[detailTarget.type] ??
+                    detailTarget.type}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Trạng thái</span>
+                <div className="mt-0.5">
+                  <StatusBadge status={detailTarget.status} />
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Mã số thuế
+                </span>
+                <p className="font-medium">{detailTarget.taxCode || "—"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Điện thoại
+                </span>
+                <p className="font-medium">{detailTarget.phone || "—"}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <span className="text-xs text-muted-foreground">Địa chỉ</span>
+                <p className="font-medium">
+                  {detailTarget.address || detailTarget.city || "—"}
+                  {detailTarget.address && detailTarget.city
+                    ? `, ${detailTarget.city}`
+                    : ""}
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <span className="text-xs text-muted-foreground">Mô tả</span>
+                <p className="font-medium whitespace-pre-wrap">
+                  {detailTarget.description || "—"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Chủ sở hữu (Owner ID)
+                </span>
+                <p
+                  className="font-mono text-xs"
+                  title={detailTarget.ownerUserId}
+                >
+                  {detailTarget.ownerUserId
+                    ? formatShortId(detailTarget.ownerUserId)
+                    : "—"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Ngày tạo / Cập nhật
+                </span>
+                <p className="text-xs">
+                  {formatDateTime(detailTarget.createdAt)} ·{" "}
+                  {formatDateTime(detailTarget.updatedAt)}
+                </p>
+              </div>
+              {detailTarget.rejectReason ? (
+                <div className="sm:col-span-2">
+                  <span className="text-xs text-muted-foreground">
+                    Lý do từ chối / Tạm ngưng
+                  </span>
+                  <p className="font-medium text-destructive">
+                    {detailTarget.rejectReason}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(rejectTarget)}

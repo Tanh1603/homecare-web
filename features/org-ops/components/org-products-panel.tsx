@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Boxes, Pencil, Plus, Trash2 } from "lucide-react";
+import { Boxes, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OrgProductItem } from "../api/org-ops.adapter";
 import { orgOpsHttpApi } from "../api/org-ops.http";
@@ -51,8 +52,12 @@ export function OrgProductsPanel({
   const [name, setName] = React.useState("");
   const [category, setCategory] = React.useState("Linh kiện");
   const [brand, setBrand] = React.useState("");
+  const [productType, setProductType] = React.useState("SMALL_PART");
   const [unitPrice, setUnitPrice] = React.useState("100000");
   const [warrantyMonths, setWarrantyMonths] = React.useState("6");
+  const [returnWindowDays, setReturnWindowDays] = React.useState("7");
+  const [imageUrl, setImageUrl] = React.useState("");
+  const [description, setDescription] = React.useState("");
   const [status, setStatus] = React.useState<"ACTIVE" | "INACTIVE">("ACTIVE");
 
   function openCreate() {
@@ -61,8 +66,12 @@ export function OrgProductsPanel({
     setName("");
     setCategory("Linh kiện");
     setBrand("");
+    setProductType("SMALL_PART");
     setUnitPrice("100000");
     setWarrantyMonths("6");
+    setReturnWindowDays("7");
+    setImageUrl("");
+    setDescription("");
     setStatus("ACTIVE");
     setCreateOpen(true);
   }
@@ -73,8 +82,12 @@ export function OrgProductsPanel({
     setName(p.name);
     setCategory(p.category);
     setBrand(p.brand ?? "");
+    setProductType(p.productType || "SMALL_PART");
     setUnitPrice(String(p.unitPrice));
     setWarrantyMonths(String(p.warrantyMonths ?? 0));
+    setReturnWindowDays(String(p.returnWindowDays ?? 7));
+    setImageUrl(p.imageUrl ?? "");
+    setDescription(p.description ?? "");
     setStatus(p.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
     setCreateOpen(true);
   }
@@ -88,8 +101,12 @@ export function OrgProductsPanel({
         name: name.trim(),
         category: category.trim(),
         brand: brand.trim() || undefined,
+        productType,
         unitPrice: Number(unitPrice) || 1000,
         warrantyMonths: Number(warrantyMonths) || 0,
+        returnWindowDays: Number(returnWindowDays) || 0,
+        imageUrl: imageUrl.trim() || undefined,
+        description: description.trim() || undefined,
         status,
       };
       if (editTarget) {
@@ -179,8 +196,9 @@ export function OrgProductsPanel({
           <TableHeader>
             <TableRow>
               <TableHead>SKU</TableHead>
-              <TableHead>Tên sản phẩm</TableHead>
-              <TableHead>Nhóm</TableHead>
+              <TableHead>Sản phẩm</TableHead>
+              <TableHead>Nhóm / Loại</TableHead>
+              <TableHead>Bảo hành / Đổi trả</TableHead>
               <TableHead>Đơn giá</TableHead>
               <TableHead>Tồn kho</TableHead>
               <TableHead>Trạng thái</TableHead>
@@ -191,9 +209,41 @@ export function OrgProductsPanel({
             {products.map((p) => (
               <TableRow key={p.id}>
                 <TableCell className="font-mono text-xs">{p.sku}</TableCell>
-                <TableCell className="font-medium">{p.name}</TableCell>
+                <TableCell className="max-w-xs">
+                  <div className="flex items-start gap-2.5">
+                    {p.imageUrl ? (
+                      <Image
+                        src={p.imageUrl}
+                        alt={p.name}
+                        width={36}
+                        height={36}
+                        unoptimized
+                        className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                        <Package className="h-4 w-4" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{p.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {p.brand ? `${p.brand} · ` : ""}
+                        {p.description || "—"}
+                      </p>
+                    </div>
+                  </div>
+                </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {p.category}
+                  <p>{p.category}</p>
+                  {p.productType ? (
+                    <p className="text-[11px]">{p.productType}</p>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  <span>BH {p.warrantyMonths ?? 0} th</span>
+                  {" · "}
+                  <span>Đổi {p.returnWindowDays ?? 0} ng</span>
                 </TableCell>
                 <TableCell>{formatVnd(p.unitPrice)}</TableCell>
                 <TableCell>
@@ -308,6 +358,64 @@ export function OrgProductsPanel({
                   onChange={(e) => setWarrantyMonths(e.target.value)}
                 />
               </div>
+              <div className="space-y-1">
+                <Label htmlFor="prod-return-days">Đổi trả (ngày)</Label>
+                <Input
+                  id="prod-return-days"
+                  type="number"
+                  min={0}
+                  value={returnWindowDays}
+                  onChange={(e) => setReturnWindowDays(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="prod-type">Loại sản phẩm</Label>
+                <select
+                  id="prod-type"
+                  value={productType}
+                  onChange={(e) => setProductType(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
+                >
+                  <option value="SMALL_PART">Linh kiện nhỏ (SMALL_PART)</option>
+                  <option value="MAJOR_PART">Linh kiện chính (MAJOR_PART)</option>
+                  <option value="SUPPLY">Vật tư tiêu hao (SUPPLY)</option>
+                  <option value="TOOL">Dụng cụ (TOOL)</option>
+                  <option value="LARGE_APPLIANCE">Thiết bị lớn (LARGE_APPLIANCE)</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="prod-image-url">URL hình ảnh</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="prod-image-url"
+                  type="url"
+                  placeholder="https://..."
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                />
+                {imageUrl.trim() ? (
+                  <Image
+                    src={imageUrl}
+                    alt="Preview"
+                    width={36}
+                    height={36}
+                    unoptimized
+                    className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
+                  />
+                ) : null}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="prod-description">Mô tả</Label>
+              <textarea
+                id="prod-description"
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Thông số kỹ thuật, model tương thích..."
+                className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="prod-status">Trạng thái</Label>

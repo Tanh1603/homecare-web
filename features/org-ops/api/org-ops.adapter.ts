@@ -12,6 +12,7 @@ export interface OrgBookingItem {
   technicianId?: string | null;
   technicianName: string | null;
   scheduledAt: string;
+  createdAt?: string;
   address?: string;
   totalAmount: number;
   status: string;
@@ -92,6 +93,7 @@ export interface OrgProductItem {
   warrantyMonths?: number;
   returnWindowDays?: number;
   description?: string;
+  imageUrl?: string | null;
   unitPrice: number;
   availableQty: number;
   reservedQty: number;
@@ -199,6 +201,7 @@ interface BackendProduct {
   warrantyMonths?: number;
   returnWindowDays?: number;
   description?: string;
+  imageUrl?: string | null;
   unitPrice: number;
   availableQty: number;
   reservedQty?: number;
@@ -231,6 +234,7 @@ function mapBooking(b: BackendBooking): OrgBookingItem {
     technicianId: b.assignedTechnicianId ?? null,
     technicianName: b.assignedTechnicianName ?? null,
     scheduledAt: b.preferredStart ?? b.createdAt,
+    createdAt: b.createdAt,
     address: b.address,
     totalAmount: b.quotedPrice ?? 0,
     status: b.status,

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -6,9 +7,11 @@ import {
   ClipboardCheck,
   ShieldCheck,
   SlidersHorizontal,
-  Wrench,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
+import { getServerAuthContext } from "@/shared/auth/guards";
+import { isAdminRole } from "@/shared/auth/roles";
 import {
   Card,
   CardContent,
@@ -40,26 +43,54 @@ const WORKFLOW_STEPS = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const ctx = await getServerAuthContext();
+  const isSignedIn = Boolean(ctx);
+  const isAdmin = ctx ? isAdminRole(ctx.roles) : false;
+  const primaryHref = isAdmin ? "/admin" : "/org";
+  const primaryLabel = isAdmin ? "Vào Admin Portal" : "Vào Organization Portal";
+
   return (
     <div className="min-h-screen bg-background flex flex-col justify-between">
       <header className="border-b border-border bg-card/80">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-              <Wrench className="h-4 w-4" />
-            </div>
+            <Image
+              src="/homecare_logo.png"
+              alt="HomeCare Logo"
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-lg object-contain"
+              priority
+            />
             <span className="text-sm font-semibold tracking-tight text-foreground">
               HomeCare Platform
             </span>
           </Link>
           <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/register/org">Đăng ký đối tác</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/login">Đăng nhập</Link>
-            </Button>
+            <ThemeToggle compact />
+            {isSignedIn ? (
+              <>
+                <span className="hidden text-xs text-muted-foreground sm:inline">
+                  {ctx?.email}
+                </span>
+                <Button asChild size="sm">
+                  <Link href={primaryHref}>
+                    {primaryLabel}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/register/org">Đăng ký đối tác</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/login">Đăng nhập</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -74,18 +105,29 @@ export default function HomePage() {
             microservices HomeCare API và xác thực Supabase Auth.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Button asChild size="lg">
-              <Link href="/org">
-                Vào Organization Portal
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/admin">
-                Vào Admin Portal
-                <ShieldCheck className="h-4 w-4" />
-              </Link>
-            </Button>
+            {isSignedIn ? (
+              <Button asChild size="lg">
+                <Link href={primaryHref}>
+                  {primaryLabel}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild size="lg">
+                  <Link href="/org">
+                    Vào Organization Portal
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="lg">
+                  <Link href="/admin">
+                    Vào Admin Portal
+                    <ShieldCheck className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </section>
 
@@ -155,9 +197,11 @@ export default function HomePage() {
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
-                <Button asChild variant="outline" className="flex-1">
-                  <Link href="/register/org">Đăng ký đối tác</Link>
-                </Button>
+                {!isAdmin ? (
+                  <Button asChild variant="outline" className="flex-1">
+                    <Link href="/register/org">Đăng ký đối tác</Link>
+                  </Button>
+                ) : null}
               </div>
             </CardContent>
           </Card>

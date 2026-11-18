@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { FolderTree } from "lucide-react";
+import Image from "next/image";
+import { FolderTree, Package } from "lucide-react";
 import { adminApi } from "@/features/admin/api/admin.adapter";
 import { PageHeader } from "@/shared/ui/page-header";
 import { StatusBadge } from "@/shared/ui/status-badge";
@@ -79,6 +80,15 @@ export default async function AdminCatalogPage({
                   <TableHead>Tên danh mục</TableHead>
                   <TableHead>Nhóm</TableHead>
                   <TableHead>Đơn vị cung cấp</TableHead>
+                  {tab === "products" ? (
+                    <>
+                      <TableHead>SKU / Thương hiệu</TableHead>
+                      <TableHead>Bảo hành / Đổi trả</TableHead>
+                      <TableHead>Tồn kho</TableHead>
+                    </>
+                  ) : (
+                    <TableHead>Thời lượng</TableHead>
+                  )}
                   <TableHead>Giá tham chiếu</TableHead>
                   <TableHead>Trạng thái</TableHead>
                 </TableRow>
@@ -89,13 +99,67 @@ export default async function AdminCatalogPage({
                     <TableCell>
                       <Badge variant="outline">{item.type}</Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="max-w-xs">
+                      <div className="flex items-start gap-2.5">
+                        {tab === "products" ? (
+                          item.imageUrl ? (
+                            <Image
+                              src={item.imageUrl}
+                              alt={item.name}
+                              width={36}
+                              height={36}
+                              unoptimized
+                              className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                              <Package className="h-4 w-4" />
+                            </div>
+                          )
+                        ) : null}
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{item.name}</p>
+                          {item.description ? (
+                            <p
+                              className="truncate text-xs text-muted-foreground"
+                              title={item.description}
+                            >
+                              {item.description}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {item.category}
+                      <p>{item.category}</p>
+                      {item.productType ? (
+                        <p className="text-[11px]">{item.productType}</p>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {item.providerName ?? "—"}
                     </TableCell>
+                    {tab === "products" ? (
+                      <>
+                        <TableCell className="text-xs text-muted-foreground">
+                          <span className="font-mono text-foreground">{item.sku ?? "—"}</span>
+                          {item.brand ? ` · ${item.brand}` : ""}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          <span>BH {item.warrantyMonths ?? 0} th</span>
+                          {" · "}
+                          <span>Đổi {item.returnWindowDays ?? 0} ng</span>
+                        </TableCell>
+                        <TableCell className="tabular-nums text-muted-foreground">
+                          {item.availableQty ?? "—"}
+                          {item.reservedQty ? ` (giữ ${item.reservedQty})` : ""}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {item.durationMinutes ? `${item.durationMinutes} phút` : "—"}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {item.basePrice ? formatVnd(item.basePrice) : "—"}
                     </TableCell>

@@ -6,6 +6,10 @@ import { Calendar, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OrgTechnicianItem } from "../api/org-ops.adapter";
 import { orgOpsHttpApi, type ScheduleWindowItem } from "../api/org-ops.http";
+import {
+  AccountProvisioningStep,
+  type ProvisionedAccountInfo,
+} from "@/features/organizations/components/account-provisioning-step";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import {
@@ -43,7 +47,8 @@ export function OrgTechniciansPanel({
   );
   const [saving, setSaving] = React.useState(false);
 
-  const [profileId, setProfileId] = React.useState("");
+  const [provisioned, setProvisioned] =
+    React.useState<ProvisionedAccountInfo | null>(null);
   const [fullName, setFullName] = React.useState("");
   const [specialtiesText, setSpecialtiesText] = React.useState("Điện lạnh");
   const [experienceYears, setExperienceYears] = React.useState("2");
@@ -58,7 +63,7 @@ export function OrgTechniciansPanel({
 
   function openCreate() {
     setEditTarget(null);
-    setProfileId("");
+    setProvisioned(null);
     setFullName("");
     setSpecialtiesText("Điện lạnh");
     setExperienceYears("2");
@@ -68,7 +73,7 @@ export function OrgTechniciansPanel({
 
   function openEdit(t: OrgTechnicianItem) {
     setEditTarget(t);
-    setProfileId(t.profileId);
+    setProvisioned(null);
     setFullName(t.fullName);
     setSpecialtiesText(t.specialties.join(", ") || "Điện lạnh");
     setExperienceYears(String(t.experienceYears ?? 0));
@@ -111,8 +116,12 @@ export function OrgTechniciansPanel({
         );
         toast.success("Đã cập nhật kỹ thuật viên");
       } else {
+        if (!provisioned) {
+          toast.error("Vui lòng tạo & xác thực tài khoản ở Bước 1 trước");
+          return;
+        }
         const created = await orgOpsHttpApi.createTechnician(organizationId, {
-          profileId: profileId.trim(),
+          profileId: provisioned.userId,
           fullName: fullName.trim(),
           specialties: specialties.length > 0 ? specialties : ["Đa năng"],
           experienceYears: Math.max(0, Number(experienceYears) || 0),
@@ -296,82 +305,97 @@ export function OrgTechniciansPanel({
       </Card>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
               {editTarget ? "Cập nhật kỹ thuật viên" : "Thêm kỹ thuật viên"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSave} className="space-y-3">
+          <div className="mt-2 space-y-4">
             {!editTarget ? (
-              <div className="space-y-1">
-                <Label htmlFor="tech-profile-id">Profile ID (Supabase UUID)</Label>
-                <Input
-                  id="tech-profile-id"
-                  value={profileId}
-                  onChange={(e) => setProfileId(e.target.value)}
-                  required
-                />
-              </div>
+              <AccountProvisioningStep
+                organizationId={organizationId}
+                provisioned={provisioned}
+                onProvisioned={(acc) => {
+                  setProvisioned(acc);
+                  if (acc) setFullName(acc.fullName);
+                }}
+              />
             ) : null}
-            <div className="space-y-1">
-              <Label htmlFor="tech-name">Họ và tên</Label>
-              <Input
-                id="tech-name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="tech-spec">Chuyên môn (phân cách bằng dấu phẩy)</Label>
-              <Input
-                id="tech-spec"
-                value={specialtiesText}
-                onChange={(e) => setSpecialtiesText(e.target.value)}
-                required
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="tech-exp">Số năm kinh nghiệm</Label>
-                <Input
-                  id="tech-exp"
-                  type="number"
-                  min={0}
-                  value={experienceYears}
-                  onChange={(e) => setExperienceYears(e.target.value)}
-                  required
-                />
+            {!editTarget && !provisioned ? (
+              <div className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+                Bước 2 (Họ tên, chuyên môn, số năm kinh nghiệm) sẽ mở sau khi tạo
+                & xác thực tài khoản ở Bước 1.
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="tech-status">Trạng thái</Label>
-                <select
-                  id="tech-status"
-                  value={status}
-                  onChange={(e) =>
-                    setStatus(e.target.value as "ACTIVE" | "INACTIVE")
-                  }
-                  className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
-                >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="INACTIVE">INACTIVE</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setModalOpen(false)}
-              >
-                Hủy
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? "Đang lưu..." : "Lưu"}
-              </Button>
-            </div>
-          </form>
+            ) : (
+              <form onSubmit={handleSave} className="space-y-3">
+                {!editTarget ? (
+                  <h3 className="text-sm font-semibold text-foreground">
+                    2. Thông tin kỹ thuật viên
+                  </h3>
+                ) : null}
+                <div className="space-y-1.5">
+                  <Label htmlFor="tech-name">Họ và tên</Label>
+                  <Input
+                    id="tech-name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="tech-spec">
+                    Chuyên môn (phân cách bằng dấu phẩy)
+                  </Label>
+                  <Input
+                    id="tech-spec"
+                    value={specialtiesText}
+                    onChange={(e) => setSpecialtiesText(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tech-exp">Số năm kinh nghiệm</Label>
+                    <Input
+                      id="tech-exp"
+                      type="number"
+                      min={0}
+                      value={experienceYears}
+                      onChange={(e) => setExperienceYears(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tech-status">Trạng thái</Label>
+                    <select
+                      id="tech-status"
+                      value={status}
+                      onChange={(e) =>
+                        setStatus(e.target.value as "ACTIVE" | "INACTIVE")
+                      }
+                      className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
+                    >
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="INACTIVE">INACTIVE</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    Hủy
+                  </Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Đang lưu..." : "Lưu"}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

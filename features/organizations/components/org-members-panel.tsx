@@ -11,9 +11,12 @@ import {
   type OrganizationMemberRole,
 } from "../contracts/organization";
 import { organizationsApi } from "../api";
+import {
+  AccountProvisioningStep,
+  type ProvisionedAccountInfo,
+} from "./account-provisioning-step";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
@@ -41,7 +44,8 @@ export function OrgMembersPanel({
 }) {
   const [members, setMembers] =
     React.useState<OrganizationMember[]>(initialMembers);
-  const [userId, setUserId] = React.useState("");
+  const [provisioned, setProvisioned] =
+    React.useState<ProvisionedAccountInfo | null>(null);
   const [role, setRole] = React.useState<(typeof ORG_ROLES)[number]>("ORG_STAFF");
   const [submitting, setSubmitting] = React.useState(false);
   const [busyUserId, setBusyUserId] = React.useState<string | null>(null);
@@ -54,7 +58,14 @@ export function OrgMembersPanel({
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = addOrganizationMemberSchema.safeParse({ userId, role });
+    if (!provisioned) {
+      toast.error("Vui lòng tạo & xác thực tài khoản ở Bước 1 trước");
+      return;
+    }
+    const parsed = addOrganizationMemberSchema.safeParse({
+      userId: provisioned.userId,
+      role,
+    });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ");
       return;
@@ -67,7 +78,7 @@ export function OrgMembersPanel({
         parsed.data
       );
       setMembers((prev) => [...prev, created]);
-      setUserId("");
+      setProvisioned(null);
       setRole("ORG_STAFF");
       toast.success("Đã thêm thành viên vào tổ chức");
     } catch (err) {
@@ -126,47 +137,61 @@ export function OrgMembersPanel({
           Thành viên tổ chức ({members.length})
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Quản lý danh sách nhân sự trực thuộc và phân quyền trong
-          organization_members.
+          Quản lý danh sách nhân sự trực thuộc và phân quyền trong tổ chức.
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
         {canManage ? (
-          <form
-            onSubmit={handleAddMember}
-            className="grid gap-3 rounded-lg border border-border bg-secondary/40 p-4 sm:grid-cols-[1fr_200px_auto] sm:items-end"
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="member-user-id">Supabase User ID</Label>
-              <Input
-                id="member-user-id"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="UUID người dùng (VD: 8e4a...)"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="member-role">Vai trò</Label>
-              <select
-                id="member-role"
-                value={role}
-                onChange={(e) =>
-                  setRole(e.target.value as (typeof ORG_ROLES)[number])
-                }
-                className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {ORG_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {formatOrgRoleLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button type="submit" disabled={submitting}>
-              <UserPlus className="h-4 w-4" />
-              {submitting ? "Đang thêm..." : "Thêm thành viên"}
-            </Button>
-          </form>
+          <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr] lg:items-start">
+            <AccountProvisioningStep
+              organizationId={organizationId}
+              provisioned={provisioned}
+              onProvisioned={setProvisioned}
+            />
+            <form
+              onSubmit={handleAddMember}
+              className="space-y-3 rounded-lg border border-border bg-secondary/35 p-4"
+            >
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-semibold text-foreground">
+                  2. Gán vai trò trong tổ chức
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {provisioned
+                    ? "Chọn vai trò và xác nhận thêm thành viên."
+                    : "Hoàn tất Bước 1 để mở khóa bước này."}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="member-role">Vai trò</Label>
+                <select
+                  id="member-role"
+                  value={role}
+                  disabled={!provisioned}
+                  onChange={(e) =>
+                    setRole(e.target.value as (typeof ORG_ROLES)[number])
+                  }
+                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                >
+                  {ORG_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {formatOrgRoleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={submitting || !provisioned}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  {submitting ? "Đang thêm..." : "Thêm vào tổ chức"}
+                </Button>
+              </div>
+            </form>
+          </div>
         ) : null}
 
         {members.length === 0 ? (
@@ -208,9 +233,6 @@ export function OrgMembersPanel({
                             {m.email}
                           </p>
                         ) : null}
-                        <p className="font-mono text-[11px] text-muted-foreground">
-                          {m.userId}
-                        </p>
                       </TableCell>
                       <TableCell>
                         {canManage && !isSelf ? (
