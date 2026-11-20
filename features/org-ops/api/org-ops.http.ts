@@ -44,6 +44,20 @@ export interface BookingWorkUpdateDto {
   createdAt: string;
 }
 
+export interface AddressSnapshotDto {
+  addressId?: string | null;
+  recipientName?: string | null;
+  phoneNumber?: string | null;
+  addressLine?: string | null;
+  wardCode?: string | null;
+  wardName?: string | null;
+  provinceCode?: string | null;
+  provinceName?: string | null;
+  formattedAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
 export interface BookingDetailDto {
   id: string;
   requesterProfileId: string;
@@ -52,6 +66,7 @@ export interface BookingDetailDto {
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
   address: string;
+  addressSnapshot?: AddressSnapshotDto | null;
   notes?: string | null;
   status: string;
   allocationStatus: string;

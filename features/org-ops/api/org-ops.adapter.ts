@@ -4,6 +4,7 @@ import {
   type PageResponse,
 } from "@/shared/api/api-envelope";
 import { gatewayFetch } from "@/shared/api/gateway-client";
+import type { AddressSnapshotDto } from "@/features/org-ops/api/org-ops.http";
 
 export interface OrgBookingItem {
   id: string;
@@ -14,6 +15,7 @@ export interface OrgBookingItem {
   scheduledAt: string;
   createdAt?: string;
   address?: string;
+  addressSnapshot?: AddressSnapshotDto | null;
   totalAmount: number;
   status: string;
   version?: number;
@@ -38,6 +40,7 @@ export interface OrgOrderItem {
   status: string;
   paymentStatus?: string;
   shippingAddress?: string;
+  shippingAddressSnapshot?: AddressSnapshotDto | null;
   warrantyActivated: boolean;
   version?: number;
   lines: OrgOrderLineItem[];
@@ -127,6 +130,7 @@ interface BackendBooking {
   preferredStart: string | null;
   createdAt: string;
   address: string;
+  addressSnapshot?: AddressSnapshotDto | null;
   quotedPrice: number;
   status: string;
   version?: number;
@@ -147,6 +151,7 @@ interface BackendOrder {
   buyerProfileId: string;
   buyerName?: string | null;
   shippingAddress?: string;
+  shippingAddressSnapshot?: AddressSnapshotDto | null;
   totalAmount: number;
   status: string;
   paymentStatus: string;
@@ -226,7 +231,7 @@ interface BackendOrderReturn {
   version?: number;
 }
 
-function mapBooking(b: BackendBooking): OrgBookingItem {
+export function mapBooking(b: BackendBooking): OrgBookingItem {
   return {
     id: b.id,
     customerName: b.requesterName?.trim() || b.requesterProfileId,
@@ -236,13 +241,14 @@ function mapBooking(b: BackendBooking): OrgBookingItem {
     scheduledAt: b.preferredStart ?? b.createdAt,
     createdAt: b.createdAt,
     address: b.address,
+    addressSnapshot: b.addressSnapshot ?? null,
     totalAmount: b.quotedPrice ?? 0,
     status: b.status,
     version: b.version,
   };
 }
 
-function mapOrder(o: BackendOrder): OrgOrderItem {
+export function mapOrder(o: BackendOrder): OrgOrderItem {
   const rawLines = o.lines ?? [];
   const productName =
     rawLines.map((l) => l.productName).filter(Boolean).join(", ") ||
@@ -260,6 +266,7 @@ function mapOrder(o: BackendOrder): OrgOrderItem {
     status: o.status,
     paymentStatus: o.paymentStatus,
     shippingAddress: o.shippingAddress,
+    shippingAddressSnapshot: o.shippingAddressSnapshot ?? null,
     warrantyActivated,
     version: o.version,
     lines: rawLines.map((l, idx) => ({

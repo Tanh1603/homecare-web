@@ -139,9 +139,34 @@ export function OrgOrdersTable({
                 <span className="text-xs text-muted-foreground">
                   Địa chỉ giao hàng
                 </span>
-                <p className="font-medium">
-                  {selectedOrder.shippingAddress ?? "—"}
-                </p>
+                <div className="mt-1 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+                  <p className="font-medium text-foreground">
+                    {selectedOrder.shippingAddress ?? "—"}
+                  </p>
+                  {selectedOrder.shippingAddressSnapshot ? (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {[
+                          selectedOrder.shippingAddressSnapshot.recipientName,
+                          selectedOrder.shippingAddressSnapshot.phoneNumber,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                      {selectedOrder.shippingAddressSnapshot.wardName ||
+                      selectedOrder.shippingAddressSnapshot.provinceName ? (
+                        <span className="inline-flex items-center rounded-md border border-border/60 bg-background px-2 py-0.5 text-[11px]">
+                          {[
+                            selectedOrder.shippingAddressSnapshot.wardName,
+                            selectedOrder.shippingAddressSnapshot.provinceName,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
 

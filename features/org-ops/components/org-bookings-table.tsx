@@ -138,6 +138,7 @@ export function OrgBookingsTable({
       serviceName: b.serviceName,
       assignedTechnicianName: b.technicianName,
       address: b.address ?? "",
+      addressSnapshot: b.addressSnapshot ?? null,
       status: b.status,
       allocationStatus: "",
       quotedPrice: b.totalAmount,
@@ -378,7 +379,34 @@ export function OrgBookingsTable({
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">Địa chỉ</span>
-                <p className="font-medium">{detailTarget.address || "—"}</p>
+                <div className="mt-1 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+                  <p className="font-medium text-foreground">
+                    {detailTarget.address || "—"}
+                  </p>
+                  {detailTarget.addressSnapshot ? (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {[
+                          detailTarget.addressSnapshot.recipientName,
+                          detailTarget.addressSnapshot.phoneNumber,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                      {detailTarget.addressSnapshot.wardName ||
+                      detailTarget.addressSnapshot.provinceName ? (
+                        <span className="inline-flex items-center rounded-md border border-border/60 bg-background px-2 py-0.5 text-[11px]">
+                          {[
+                            detailTarget.addressSnapshot.wardName,
+                            detailTarget.addressSnapshot.provinceName,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">Báo giá</span>
