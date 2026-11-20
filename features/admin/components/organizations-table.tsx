@@ -5,6 +5,7 @@ import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
 import { CheckCircle2, Eye, PauseCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
+  LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   type Organization,
   type OrganizationStatus,
@@ -89,6 +90,12 @@ export function OrganizationsTable({
             <Badge variant="outline" className="text-[11px]">
               {ORGANIZATION_TYPE_LABELS[row.original.type] ?? row.original.type}
             </Badge>
+            {row.original.legalEntityType ? (
+              <Badge variant="secondary" className="text-[11px]">
+                {LEGAL_ENTITY_TYPE_LABELS[row.original.legalEntityType] ??
+                  row.original.legalEntityType}
+              </Badge>
+            ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
             {row.original.taxCode ? `MST: ${row.original.taxCode} · ` : ""}
@@ -253,10 +260,23 @@ export function OrganizationsTable({
         {detailTarget ? (
           <div className="grid gap-3.5 text-sm sm:grid-cols-2">
             <div>
-              <span className="text-xs text-muted-foreground">Loại hình</span>
+              <span className="text-xs text-muted-foreground">
+                Lĩnh vực hoạt động
+              </span>
               <p className="font-medium">
                 {ORGANIZATION_TYPE_LABELS[detailTarget.type] ??
                   detailTarget.type}
+              </p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">
+                Loại hình pháp lý
+              </span>
+              <p className="font-medium">
+                {detailTarget.legalEntityType
+                  ? (LEGAL_ENTITY_TYPE_LABELS[detailTarget.legalEntityType] ??
+                    detailTarget.legalEntityType)
+                  : "—"}
               </p>
             </div>
             <div>

@@ -9,15 +9,25 @@ export const ORGANIZATION_STATUSES = [
 
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 
-export const ORGANIZATION_TYPES = [
+export const ORGANIZATION_TYPES = ["SERVICE", "COMMERCE", "BOTH"] as const;
+
+export type OrganizationType = (typeof ORGANIZATION_TYPES)[number];
+
+export const ORGANIZATION_TYPE_LABELS: Record<OrganizationType, string> = {
+  SERVICE: "Cung cấp dịch vụ",
+  COMMERCE: "Bán hàng & Linh kiện",
+  BOTH: "Dịch vụ & Bán hàng",
+};
+
+export const LEGAL_ENTITY_TYPES = [
   "COMPANY",
   "HOUSEHOLD_BUSINESS",
   "INDIVIDUAL",
 ] as const;
 
-export type OrganizationType = (typeof ORGANIZATION_TYPES)[number];
+export type LegalEntityType = (typeof LEGAL_ENTITY_TYPES)[number];
 
-export const ORGANIZATION_TYPE_LABELS: Record<OrganizationType, string> = {
+export const LEGAL_ENTITY_TYPE_LABELS: Record<LegalEntityType, string> = {
   COMPANY: "Công ty / Doanh nghiệp",
   HOUSEHOLD_BUSINESS: "Hộ kinh doanh",
   INDIVIDUAL: "Cá nhân hành nghề",
@@ -48,6 +58,7 @@ export interface Organization {
   id: string;
   name: string;
   type: OrganizationType;
+  legalEntityType?: LegalEntityType | null;
   status: OrganizationStatus;
   rejectReason?: string | null;
   rejectionReason?: string | null;
@@ -66,6 +77,7 @@ export interface OrganizationMembership {
   organizationId: string;
   organizationName: string;
   type?: OrganizationType;
+  legalEntityType?: LegalEntityType | null;
   organizationStatus: OrganizationStatus;
   rejectReason?: string | null;
   rejectionReason?: string | null;
@@ -86,6 +98,20 @@ export interface OrganizationMember {
   joinedAt: string;
 }
 
+function toOrganizationType(value: unknown): OrganizationType {
+  return typeof value === "string" &&
+    (ORGANIZATION_TYPES as readonly string[]).includes(value)
+    ? (value as OrganizationType)
+    : "SERVICE";
+}
+
+function toLegalEntityType(value: unknown): LegalEntityType | null {
+  return typeof value === "string" &&
+    (LEGAL_ENTITY_TYPES as readonly string[]).includes(value)
+    ? (value as LegalEntityType)
+    : null;
+}
+
 export function normalizeOrganization(
   raw: Partial<Organization> & Record<string, unknown>
 ): Organization {
@@ -97,7 +123,8 @@ export function normalizeOrganization(
   return {
     id: String(raw.id ?? ""),
     name: String(raw.name ?? ""),
-    type: (raw.type as OrganizationType) || "COMPANY",
+    type: toOrganizationType(raw.type),
+    legalEntityType: toLegalEntityType(raw.legalEntityType),
     status: (raw.status as OrganizationStatus) || "PENDING",
     rejectReason,
     rejectionReason: rejectReason,
@@ -128,7 +155,8 @@ export function normalizeMembership(
   return {
     organizationId: String(raw.organizationId ?? ""),
     organizationName: String(raw.organizationName ?? ""),
-    type: (raw.type as OrganizationType | undefined) ?? "COMPANY",
+    type: toOrganizationType(raw.type),
+    legalEntityType: toLegalEntityType(raw.legalEntityType),
     organizationStatus:
       (raw.organizationStatus as OrganizationStatus) || "PENDING",
     rejectReason,
@@ -143,7 +171,10 @@ export function normalizeMembership(
 export const registerOrganizationSchema = z.object({
   name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
   type: z.enum(ORGANIZATION_TYPES, {
-    error: "Vui lòng chọn loại hình tổ chức",
+    error: "Vui lòng chọn lĩnh vực hoạt động",
+  }),
+  legalEntityType: z.enum(LEGAL_ENTITY_TYPES, {
+    error: "Vui lòng chọn loại hình pháp lý",
   }),
   taxCode: z
     .string()

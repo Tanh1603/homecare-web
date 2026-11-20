@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   formatOrgRoleLabel,
+  LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   updateOrganizationSchema,
   type Organization,
@@ -131,7 +132,7 @@ export function OrgProfileForm({
         />
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-4 text-sm sm:grid-cols-3">
+        <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-xs text-muted-foreground">Vai trò của bạn</p>
             <p className="mt-0.5 font-medium">
@@ -139,11 +140,20 @@ export function OrgProfileForm({
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Loại hình pháp lý</p>
+            <p className="text-xs text-muted-foreground">Lĩnh vực hoạt động</p>
             <p className="mt-0.5 font-medium">
               {initialOrganization
                 ? ORGANIZATION_TYPE_LABELS[initialOrganization.type] ??
                   initialOrganization.type
+                : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Loại hình pháp lý</p>
+            <p className="mt-0.5 font-medium">
+              {initialOrganization?.legalEntityType
+                ? LEGAL_ENTITY_TYPE_LABELS[initialOrganization.legalEntityType] ??
+                  initialOrganization.legalEntityType
                 : "—"}
             </p>
           </div>

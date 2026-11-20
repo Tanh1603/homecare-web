@@ -9,7 +9,9 @@ import type {
   OrgOrderItem,
   OrgProductItem,
   OrgReturnItem,
+  OrgServiceCoverageArea,
   OrgServiceItem,
+  OrgServiceRequestItem,
   OrgTechnicianItem,
   OrgWarrantyItem,
 } from "./org-ops.adapter";
@@ -282,6 +284,8 @@ export const orgOpsHttpApi = {
       category?: string;
       description?: string;
       basePrice?: number;
+      priceType?: "FIXED" | "QUOTE_REQUIRED";
+      inspectionFee?: number | null;
       estimatedDurationMinutes?: number;
       active?: boolean;
     }
@@ -295,6 +299,118 @@ export const orgOpsHttpApi = {
       }
     );
     const json = (await res.json()) as ApiResponse<OrgServiceItem>;
+    return unwrapApiResponse(json);
+  },
+
+  async replaceServiceCoverage(
+    organizationId: string,
+    serviceId: string,
+    areas: OrgServiceCoverageArea[]
+  ): Promise<OrgServiceCoverageArea[]> {
+    const res = await fetch(
+      `/api/gateway/services/${encodeURIComponent(serviceId)}/coverage`,
+      {
+        method: "PUT",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify({ areas }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<OrgServiceCoverageArea[]>;
+    return unwrapApiResponse(json);
+  },
+
+  async listServiceRequests(
+    organizationId: string,
+    page = 1,
+    size = 50
+  ): Promise<OrgServiceRequestItem[]> {
+    const res = await fetch(
+      `/api/gateway/service-requests?page=${page}&size=${size}`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<
+      PageResponse<OrgServiceRequestItem> | OrgServiceRequestItem[]
+    >;
+    return extractPageItems(unwrapApiResponse(json));
+  },
+
+  async acceptServiceRequest(
+    organizationId: string,
+    requestId: string,
+    fixedPrice = 0
+  ): Promise<OrgServiceRequestItem> {
+    const res = await fetch(
+      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/provider-accept?fixedPrice=${fixedPrice}`,
+      {
+        method: "POST",
+        headers: orgHeaders(organizationId),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<OrgServiceRequestItem>;
+    return unwrapApiResponse(json);
+  },
+
+  async rejectServiceRequest(
+    organizationId: string,
+    requestId: string,
+    reason: string
+  ): Promise<OrgServiceRequestItem> {
+    const res = await fetch(
+      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/provider-reject`,
+      {
+        method: "POST",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify({ reason }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<OrgServiceRequestItem>;
+    return unwrapApiResponse(json);
+  },
+
+  async issueQuotation(
+    organizationId: string,
+    requestId: string,
+    input: {
+      items: {
+        type: "LABOR" | "MATERIAL" | "OTHER";
+        description: string;
+        quantity: number;
+        unitPrice: number;
+      }[];
+      validUntil?: string;
+      applyInspectionFeeCredit?: boolean;
+    }
+  ): Promise<{
+    id: string;
+    serviceRequestId: string;
+    version: number;
+    itemsTotal: number;
+    inspectionFeePaid: number;
+    inspectionFeeCredit: number;
+    totalDueAfterCredit: number;
+    status: string;
+  }> {
+    const res = await fetch(
+      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/quotations`,
+      {
+        method: "POST",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify(input),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<{
+      id: string;
+      serviceRequestId: string;
+      version: number;
+      itemsTotal: number;
+      inspectionFeePaid: number;
+      inspectionFeeCredit: number;
+      totalDueAfterCredit: number;
+      status: string;
+    }>;
     return unwrapApiResponse(json);
   },
 

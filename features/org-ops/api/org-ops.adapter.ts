@@ -18,6 +18,8 @@ export interface OrgBookingItem {
   addressSnapshot?: AddressSnapshotDto | null;
   totalAmount: number;
   status: string;
+  purpose?: "REPAIR" | "INSTALLATION" | string;
+  productReady?: boolean;
   version?: number;
 }
 
@@ -69,6 +71,15 @@ export interface OrgWarrantyItem {
   startsOn?: string;
   expiresAt: string;
   status: string;
+  source?: string;
+  manufacturerRegistrationStatus?: string | null;
+  triggerEvidenceRef?: string | null;
+}
+
+export interface OrgServiceCoverageArea {
+  locationCode: string;
+  level: "PROVINCE" | "WARD";
+  active?: boolean;
 }
 
 export interface OrgServiceItem {
@@ -79,9 +90,39 @@ export interface OrgServiceItem {
   category: string;
   description?: string;
   basePrice: number;
+  priceType?: "FIXED" | "QUOTE_REQUIRED";
+  inspectionFee?: number | null;
+  priceVersion?: number;
+  coverageAreas?: OrgServiceCoverageArea[];
   estimatedDurationMinutes: number;
   active: boolean;
   status: string;
+}
+
+export interface OrgServiceRequestItem {
+  id: string;
+  requesterProfileId: string;
+  requesterName?: string | null;
+  requestType: "PAID_REPAIR" | "WARRANTY_CLAIM" | "MARKETPLACE" | string;
+  serviceCategory: string;
+  serviceOfferingId?: string | null;
+  priceType: "FIXED" | "QUOTE_REQUIRED" | string;
+  requiresOnsiteSurvey: boolean;
+  inspectionFee: number;
+  deviceId?: string | null;
+  warrantyId?: string | null;
+  warrantyStatus?: string | null;
+  assignedProviderId?: string | null;
+  fallbackReason?: string | null;
+  diagnosticBookingId?: string | null;
+  repairBookingId?: string | null;
+  acceptedQuotationId?: string | null;
+  issueDescription?: string | null;
+  preferredStart: string;
+  address: string;
+  formattedAddress?: string | null;
+  status: string;
+  createdAt: string;
 }
 
 export interface OrgProductItem {
@@ -180,6 +221,8 @@ interface BackendWarranty {
   startsOn: string;
   endsOn: string;
   status: string;
+  manufacturerRegistrationStatus?: string | null;
+  triggerEvidenceRef?: string | null;
 }
 
 interface BackendServiceOffering {
@@ -391,6 +434,9 @@ export const orgOpsApi = {
         startsOn: w.startsOn,
         expiresAt: w.endsOn,
         status: w.status,
+        source: w.source,
+        manufacturerRegistrationStatus: w.manufacturerRegistrationStatus,
+        triggerEvidenceRef: w.triggerEvidenceRef,
       })),
       pagination: extractPaginationMeta(data, page, size),
     };

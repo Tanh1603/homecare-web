@@ -31,6 +31,9 @@ interface ServiceFormValues {
   name: string;
   category: string;
   basePrice: string;
+  priceType: "FIXED" | "QUOTE_REQUIRED";
+  inspectionFee: string;
+  coverageCodes: string;
   duration: string;
   description: string;
   active: boolean;
@@ -40,6 +43,9 @@ const DEFAULT_SERVICE_FORM: ServiceFormValues = {
   name: "",
   category: "Điện lạnh",
   basePrice: "250000",
+  priceType: "FIXED",
+  inspectionFee: "0",
+  coverageCodes: "",
   duration: "60",
   description: "",
   active: true,
@@ -100,6 +106,11 @@ export function OrgServicesPanel({
       name: s.name,
       category: s.category,
       basePrice: String(s.basePrice),
+      priceType: s.priceType ?? "FIXED",
+      inspectionFee: String(s.inspectionFee ?? 0),
+      coverageCodes: (s.coverageAreas ?? [])
+        .map((c) => `${c.locationCode}:${c.level}`)
+        .join(", "),
       duration: String(s.estimatedDurationMinutes),
       description: s.description ?? "",
       active: s.active,
@@ -118,6 +129,11 @@ export function OrgServicesPanel({
     const price = Number(form.basePrice);
     if (!Number.isFinite(price) || price < 0) {
       nextErrors.basePrice = "Giá niêm yết không hợp lệ";
+    }
+    const fee = Number(form.inspectionFee || 0);
+    if (!Number.isFinite(fee) || fee < 0 || fee > 500000) {
+      nextErrors.inspectionFee =
+        "Phí khảo sát phải trong khung 0 – 500.000 VNĐ";
     }
     const dur = Number(form.duration);
     if (!Number.isFinite(dur) || dur < 15) {

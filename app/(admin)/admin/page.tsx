@@ -8,7 +8,10 @@ import {
   Wrench,
 } from "lucide-react";
 import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
-import { ORGANIZATION_TYPE_LABELS } from "@/features/organizations/contracts/organization";
+import {
+  LEGAL_ENTITY_TYPE_LABELS,
+  ORGANIZATION_TYPE_LABELS,
+} from "@/features/organizations/contracts/organization";
 import { adminApi } from "@/features/admin/api/admin.adapter";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Button } from "@/shared/ui/button";
@@ -155,7 +158,14 @@ export default async function AdminDashboardPage() {
                         {org.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {ORGANIZATION_TYPE_LABELS[org.type] ?? org.type} ·{" "}
+                        {ORGANIZATION_TYPE_LABELS[org.type] ?? org.type}
+                        {org.legalEntityType
+                          ? ` · ${
+                              LEGAL_ENTITY_TYPE_LABELS[org.legalEntityType] ??
+                              org.legalEntityType
+                            }`
+                          : ""}
+                        {" · "}
                         {org.city}
                         {org.taxCode ? ` · MST: ${org.taxCode}` : ""} ·{" "}
                         {org.phone}

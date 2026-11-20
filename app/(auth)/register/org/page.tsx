@@ -9,6 +9,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Info } from "lucide-react";
 import {
+  LEGAL_ENTITY_TYPES,
+  LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPES,
   ORGANIZATION_TYPE_LABELS,
   registerOrganizationSchema,
@@ -37,7 +39,8 @@ export default function RegisterOrganizationPage() {
     resolver: zodResolver(registerOrganizationSchema),
     defaultValues: {
       name: "",
-      type: "COMPANY",
+      type: "SERVICE",
+      legalEntityType: "COMPANY",
       taxCode: "",
       phone: "",
       city: "TP. Hồ Chí Minh",
@@ -142,19 +145,42 @@ export default function RegisterOrganizationPage() {
                 </FormField>
 
                 <FormField
-                  label="Loại hình tổ chức"
+                  label="Lĩnh vực hoạt động"
                   htmlFor="type"
                   required
                   error={form.formState.errors.type?.message}
                 >
                   <select
                     id="type"
+                    aria-invalid={Boolean(form.formState.errors.type) || undefined}
                     {...form.register("type")}
                     className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {ORGANIZATION_TYPES.map((orgType) => (
                       <option key={orgType} value={orgType}>
                         {ORGANIZATION_TYPE_LABELS[orgType]}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField
+                  label="Loại hình pháp lý"
+                  htmlFor="legalEntityType"
+                  required
+                  error={form.formState.errors.legalEntityType?.message}
+                >
+                  <select
+                    id="legalEntityType"
+                    aria-invalid={
+                      Boolean(form.formState.errors.legalEntityType) || undefined
+                    }
+                    {...form.register("legalEntityType")}
+                    className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {LEGAL_ENTITY_TYPES.map((entityType) => (
+                      <option key={entityType} value={entityType}>
+                        {LEGAL_ENTITY_TYPE_LABELS[entityType]}
                       </option>
                     ))}
                   </select>
@@ -193,6 +219,7 @@ export default function RegisterOrganizationPage() {
                   htmlFor="taxCode"
                   hint="Tuỳ chọn đối với cá nhân hành nghề."
                   error={form.formState.errors.taxCode?.message}
+                  className="sm:col-span-2"
                 >
                   <Input
                     id="taxCode"

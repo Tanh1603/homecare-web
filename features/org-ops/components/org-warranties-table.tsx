@@ -17,6 +17,36 @@ import {
 } from "@/shared/ui/table";
 import { formatDate, formatShortId } from "@/shared/lib/utils";
 
+function formatWarrantySource(source?: string): string {
+  switch (source) {
+    case "INSTALLATION_COMPLETED":
+      return "Hoàn tất lắp đặt";
+    case "ORDER_LINE_DELIVERED":
+      return "Giao hàng đơn hàng";
+    case "ORDER_AUTO_ACTIVATED":
+      return "Tự động từ đơn hàng";
+    case "MANUAL":
+      return "Tạo thủ công";
+    default:
+      return source || "—";
+  }
+}
+
+function formatManufacturerRegistrationStatus(status?: string | null): string {
+  switch (status) {
+    case "VERIFIED":
+      return "Đã xác minh hãng";
+    case "EXTERNAL_REQUIRED":
+      return "Cần đăng ký hãng ngoài";
+    case "NOT_VERIFIED":
+    case null:
+    case undefined:
+      return "Chưa xác minh hãng";
+    default:
+      return status;
+  }
+}
+
 export function OrgWarrantiesTable({
   initialWarranties,
 }: {
@@ -33,6 +63,7 @@ export function OrgWarrantiesTable({
               <TableHead>Mã BH</TableHead>
               <TableHead>Thiết bị / Nội dung bảo hành</TableHead>
               <TableHead>Khách hàng / Nguồn</TableHead>
+              <TableHead>Đăng ký hãng</TableHead>
               <TableHead>Bắt đầu</TableHead>
               <TableHead>Hết hạn</TableHead>
               <TableHead>Trạng thái</TableHead>
@@ -47,13 +78,17 @@ export function OrgWarrantiesTable({
                 </TableCell>
                 <TableCell className="font-medium">{w.deviceOrPart}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {w.customerName}
+                  <div>{w.customerName}</div>
+                  <div className="text-xs">{formatWarrantySource(w.source)}</div>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {formatManufacturerRegistrationStatus(w.manufacturerRegistrationStatus)}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {w.startsOn ? formatDate(w.startsOn) : "—"}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {formatDate(w.expiresAt)}
+                  {w.expiresAt ? formatDate(w.expiresAt) : "—"}
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={w.status} />
@@ -90,6 +125,24 @@ export function OrgWarrantiesTable({
               <p className="text-xs text-muted-foreground">Đơn vị bảo hành</p>
               <p className="font-medium">{selected.providerName ?? "—"}</p>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Nguồn kích hoạt</p>
+                <p className="font-medium">{formatWarrantySource(selected.source)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Đăng ký hãng</p>
+                <p className="font-medium">
+                  {formatManufacturerRegistrationStatus(selected.manufacturerRegistrationStatus)}
+                </p>
+              </div>
+            </div>
+            {selected.triggerEvidenceRef ? (
+              <div>
+                <p className="text-xs text-muted-foreground">Mã minh chứng kích hoạt</p>
+                <p className="font-mono text-xs font-medium">{selected.triggerEvidenceRef}</p>
+              </div>
+            ) : null}
             <div>
               <p className="text-xs text-muted-foreground">Phạm vi / Ghi chú</p>
               <p className="font-medium">
@@ -107,7 +160,9 @@ export function OrgWarrantiesTable({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Hết hạn</p>
-                <p className="font-medium">{formatDate(selected.expiresAt)}</p>
+                <p className="font-medium">
+                  {selected.expiresAt ? formatDate(selected.expiresAt) : "—"}
+                </p>
               </div>
             </div>
           </div>

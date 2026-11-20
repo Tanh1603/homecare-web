@@ -196,6 +196,7 @@ export function OrgBookingsTable({
               <TableHead>Mã</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead>Dịch vụ</TableHead>
+              <TableHead>Luồng</TableHead>
               <TableHead>Kỹ thuật viên</TableHead>
               <TableHead>Lịch hẹn</TableHead>
               <TableHead>Tổng tiền</TableHead>
@@ -215,6 +216,18 @@ export function OrgBookingsTable({
                   </TableCell>
                   <TableCell className="font-medium">{b.customerName}</TableCell>
                   <TableCell>{b.serviceName}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant={b.purpose === "INSTALLATION" ? "warning" : "secondary"}>
+                        {b.purpose === "INSTALLATION" ? "Lắp đặt" : "Dịch vụ"}
+                      </Badge>
+                      {b.purpose === "INSTALLATION" ? (
+                        <span className="text-xs text-muted-foreground">
+                          {b.productReady ? "Sản phẩm đã giao" : "Chờ giao sản phẩm"}
+                        </span>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell>{b.technicianName ?? "Chưa phân công"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     <p>{formatDateTime(b.scheduledAt)}</p>
