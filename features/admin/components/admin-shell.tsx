@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 import {
   Building2,
-  FileText,
   FolderTree,
   LayoutDashboard,
+  SlidersHorizontal,
   Users,
   Wrench,
 } from "lucide-react";
@@ -25,7 +25,11 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
     icon: Building2,
     defaultHref: "/admin/organizations",
     items: [
-      { href: "/admin/organizations", label: "Tổ chức đối tác", icon: Building2 },
+      {
+        href: "/admin/organizations",
+        label: "Tổ chức đối tác",
+        icon: Building2,
+      },
       { href: "/admin/users", label: "Người dùng", icon: Users },
       { href: "/admin/technicians", label: "Kỹ thuật viên", icon: Wrench },
     ],
@@ -36,8 +40,12 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
     icon: FolderTree,
     defaultHref: "/admin/catalog",
     items: [
-      { href: "/admin/catalog", label: "Danh mục", icon: FolderTree },
-      { href: "/admin/content", label: "Cấu hình & Nội dung", icon: FileText },
+      { href: "/admin/catalog", label: "Dịch vụ & Sản phẩm", icon: FolderTree },
+      {
+        href: "/admin/governance",
+        label: "Cấu hình quản trị",
+        icon: SlidersHorizontal,
+      },
     ],
   },
 ];
@@ -52,7 +60,7 @@ export function AdminShell({
   return (
     <PortalShell
       portalTitle="HomeCare Admin"
-      portalBadge="ADMIN"
+      portalBadge="Admin"
       userEmail={userEmail}
       navGroups={ADMIN_NAV_GROUPS}
     >

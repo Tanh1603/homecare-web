@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Clock, XCircle } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
+import { OrgAppealForm } from "@/features/organizations/components/org-appeal-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
@@ -55,6 +56,11 @@ export default async function OrgStatusPage() {
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
                   Lý do: {reason}
                 </div>
+              ) : null}
+              {(org.organizationStatus === "SUSPENDED" ||
+                org.organizationStatus === "BANNED") &&
+              org.memberRole === "ORG_OWNER" ? (
+                <OrgAppealForm organizationId={org.organizationId} />
               ) : null}
             </div>
           )}

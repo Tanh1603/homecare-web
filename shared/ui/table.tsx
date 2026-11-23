@@ -19,7 +19,12 @@ export function TableHeader({
   className,
   ...props
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("[&_tr]:border-b", className)} {...props} />;
+  return (
+    <thead
+      className={cn("bg-surface-secondary/70 [&_tr]:border-b", className)}
+      {...props}
+    />
+  );
 }
 
 export function TableBody({

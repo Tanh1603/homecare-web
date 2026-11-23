@@ -104,6 +104,18 @@ export const organizationsHttpAdapter = {
     return normalizeOrganization(unwrapApiResponse(json));
   },
 
+  async approveUpgrade(organizationId: string): Promise<Organization> {
+    const res = await fetch(
+      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/approve-upgrade`,
+      {
+        method: "POST",
+        headers: { "x-homecare-scope": "personal" },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
+    return normalizeOrganization(unwrapApiResponse(json));
+  },
+
   async addMember(
     organizationId: string,
     input: AddOrganizationMemberInput
@@ -172,5 +184,117 @@ export const organizationsHttpAdapter = {
     });
     const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
     return normalizeOrganization(unwrapApiResponse(json));
+  },
+
+  async ban(
+    organizationId: string,
+    input: {
+      reason: string;
+      evidenceRefs?: string;
+      safetyInterventionFlag?: boolean;
+    }
+  ): Promise<Organization> {
+    const res = await fetch(
+      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/ban`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-homecare-scope": "personal",
+        },
+        body: JSON.stringify(input),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
+    return normalizeOrganization(unwrapApiResponse(json));
+  },
+
+  async submitAppeal(
+    organizationId: string,
+    input: {
+      enforcementId: string;
+      appealReason: string;
+      evidenceRefs?: string;
+    }
+  ): Promise<{ id: string; status: string; slaDueAt: string }> {
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/appeals`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-homecare-scope": "personal",
+        },
+        body: JSON.stringify(input),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<{
+      id: string;
+      status: string;
+      slaDueAt: string;
+    }>;
+    return unwrapApiResponse(json);
+  },
+
+  async resolveAppeal(
+    organizationId: string,
+    appealId: string,
+    input: {
+      approved: boolean;
+      reviewNote?: string;
+      targetStatus?: "APPROVED" | "SUSPENDED";
+    }
+  ): Promise<{ id: string; status: string }> {
+    const res = await fetch(
+      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/appeals/${encodeURIComponent(appealId)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-homecare-scope": "personal",
+        },
+        body: JSON.stringify(input),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<{
+      id: string;
+      status: string;
+    }>;
+    return unwrapApiResponse(json);
+  },
+
+  async listGovernanceSettings(): Promise<
+    { settingKey: string; settingValue: string; updatedBy?: string | null; updatedAt?: string }[]
+  > {
+    const res = await fetch("/api/gateway/admin/governance/settings", {
+      cache: "no-store",
+      headers: { "x-homecare-scope": "personal" },
+    });
+    const json = (await res.json()) as ApiResponse<
+      { settingKey: string; settingValue: string; updatedBy?: string | null; updatedAt?: string }[]
+    >;
+    return unwrapApiResponse(json);
+  },
+
+  async updateGovernanceSetting(
+    key: string,
+    value: string
+  ): Promise<{ settingKey: string; settingValue: string }> {
+    const res = await fetch(
+      `/api/gateway/admin/governance/settings/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-homecare-scope": "personal",
+        },
+        body: JSON.stringify({ value }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<{
+      settingKey: string;
+      settingValue: string;
+    }>;
+    return unwrapApiResponse(json);
   },
 };

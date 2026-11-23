@@ -32,6 +32,27 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+export interface BreadcrumbSegment {
+  label: string;
+  href?: string;
+}
+
+interface PortalBreadcrumbContextValue {
+  setTrail: (trail: BreadcrumbSegment[] | null) => void;
+}
+
+const PortalBreadcrumbContext =
+  React.createContext<PortalBreadcrumbContextValue | null>(null);
+
+export function usePortalBreadcrumb(trail: BreadcrumbSegment[] | null) {
+  const ctx = React.useContext(PortalBreadcrumbContext);
+  React.useEffect(() => {
+    if (!ctx) return;
+    ctx.setTrail(trail);
+    return () => ctx.setTrail(null);
+  }, [ctx, trail]);
+}
+
 function getInitials(email: string): string {
   const local = email.split("@")[0] ?? "HC";
   const parts = local.split(/[._-]+/).filter(Boolean);
@@ -77,6 +98,13 @@ export function PortalShell({
     [pathname]
   );
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [customTrail, setCustomTrail] = React.useState<
+    BreadcrumbSegment[] | null
+  >(null);
+  const breadcrumbCtxValue = React.useMemo(
+    () => ({ setTrail: setCustomTrail }),
+    []
+  );
 
   const groups: NavGroup[] = React.useMemo(() => {
     if (navGroups && navGroups.length > 0) return navGroups;
@@ -168,7 +196,7 @@ export function PortalShell({
                     className={cn(
                       "h-4 w-4 shrink-0 transition-colors duration-150",
                       active
-                        ? "text-primary"
+                        ? "text-accent-foreground"
                         : "text-muted-foreground group-hover:text-foreground"
                     )}
                   />
@@ -210,7 +238,8 @@ export function PortalShell({
   );
 
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-background text-foreground flex min-w-0 min-h-0">
+    <PortalBreadcrumbContext.Provider value={breadcrumbCtxValue}>
+      <div className="h-[100dvh] w-full overflow-hidden bg-background text-foreground flex min-w-0 min-h-0">
       {/* Primary Rail (Desktop >= 1024px) */}
       <aside
         aria-label="Primary workspace rail"
@@ -224,7 +253,7 @@ export function PortalShell({
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 transition-transform duration-150 hover:scale-[1.03]"
           >
             <Image
-              src="/homecare_logo.png"
+              src="/homecare-logo.svg"
               alt="HomeCare Logo"
               width={28}
               height={28}
@@ -339,7 +368,7 @@ export function PortalShell({
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Image
-                  src="/homecare_logo.png"
+                  src="/homecare-logo.svg"
                   alt="HomeCare Logo"
                   width={28}
                   height={28}
@@ -386,11 +415,35 @@ export function PortalShell({
               <Menu className="h-5 w-5" />
             </button>
 
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+            <nav
+              aria-label="Đường dẫn trang"
+              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground min-w-0"
+            >
               <span className="truncate font-medium text-foreground/80">
                 {portalTitle}
               </span>
-              {activeItem ? (
+              {customTrail && customTrail.length > 0 ? (
+                customTrail.map((segment, idx) => {
+                  const isLast = idx === customTrail.length - 1;
+                  return (
+                    <React.Fragment key={`${segment.label}-${idx}`}>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                      {segment.href && !isLast ? (
+                        <Link
+                          href={segment.href}
+                          className="truncate font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {segment.label}
+                        </Link>
+                      ) : (
+                        <span className="truncate font-medium text-foreground">
+                          {segment.label}
+                        </span>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              ) : activeItem ? (
                 <>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                   <span className="truncate font-medium text-foreground">
@@ -398,9 +451,11 @@ export function PortalShell({
                   </span>
                 </>
               ) : null}
-            </div>
+            </nav>
             <span className="sm:hidden truncate text-sm font-semibold text-foreground">
-              {activeItem?.label ?? portalTitle}
+              {customTrail?.[customTrail.length - 1]?.label ??
+                activeItem?.label ??
+                portalTitle}
             </span>
           </div>
 
@@ -422,5 +477,6 @@ export function PortalShell({
         </main>
       </div>
     </div>
+    </PortalBreadcrumbContext.Provider>
   );
 }

@@ -92,7 +92,7 @@ function LoginFormCard() {
           className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl overflow-hidden shadow-xs"
         >
           <Image
-            src="/homecare_logo.png"
+            src="/homecare-logo.svg"
             alt="HomeCare Logo"
             width={48}
             height={48}

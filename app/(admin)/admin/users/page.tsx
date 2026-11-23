@@ -27,13 +27,13 @@ export default async function AdminUsersPage({
     <div className="space-y-6">
       <PageHeader
         title="Quản lý người dùng"
-        description="Danh sách tài khoản, phân quyền global role và tạm ngưng/kích hoạt lại từ Supabase Auth."
+        description="Danh sách tài khoản, phân quyền vai trò hệ thống và tạm ngưng hoặc kích hoạt lại tài khoản."
       />
       {users.length === 0 ? (
         <EmptyState
           icon={Users}
           title="Chưa có người dùng"
-          description="Không tìm thấy tài khoản nào hoặc chưa kết nối được tới Admin API / Supabase Auth."
+          description="Không tìm thấy tài khoản nào hoặc chưa kết nối được tới máy chủ quản trị."
         />
       ) : (
         <>

@@ -15,6 +15,7 @@ import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -293,33 +294,41 @@ export function OrgTechniciansPanel({
                 <TableCell>
                   <StatusBadge status={t.status} />
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openSchedules(t)}
-                    >
-                      <Calendar className="h-3.5 w-3.5" />
-                      Lịch
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openEdit(t)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Sửa
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(t)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <RowActionsMenu
+                    ariaLabel={`Thao tác cho kỹ thuật viên ${t.fullName}`}
+                    groups={[
+                      {
+                        id: "manage",
+                        items: [
+                          {
+                            id: "schedules",
+                            label: "Lịch làm việc",
+                            icon: Calendar,
+                            onSelect: () => openSchedules(t),
+                          },
+                          {
+                            id: "edit-tech",
+                            label: "Chỉnh sửa thông tin",
+                            icon: Pencil,
+                            onSelect: () => openEdit(t),
+                          },
+                        ],
+                      },
+                      {
+                        id: "danger",
+                        items: [
+                          {
+                            id: "delete-tech",
+                            label: "Xóa kỹ thuật viên",
+                            icon: Trash2,
+                            destructive: true,
+                            onSelect: () => handleDelete(t),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}

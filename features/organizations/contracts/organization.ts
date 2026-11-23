@@ -5,11 +5,13 @@ export const ORGANIZATION_STATUSES = [
   "APPROVED",
   "REJECTED",
   "SUSPENDED",
+  "BANNED",
 ] as const;
 
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 
 export const ORGANIZATION_TYPES = ["SERVICE", "COMMERCE", "BOTH"] as const;
+export const V01_REGISTERABLE_ORGANIZATION_TYPES = ["SERVICE"] as const;
 
 export type OrganizationType = (typeof ORGANIZATION_TYPES)[number];
 
@@ -62,6 +64,9 @@ export interface Organization {
   status: OrganizationStatus;
   rejectReason?: string | null;
   rejectionReason?: string | null;
+  resubmitCount?: number;
+  identityVerified?: boolean;
+  pendingLegalEntityUpgrade?: LegalEntityType | null;
   taxCode?: string | null;
   phone: string;
   city: string;
@@ -128,6 +133,13 @@ export function normalizeOrganization(
     status: (raw.status as OrganizationStatus) || "PENDING",
     rejectReason,
     rejectionReason: rejectReason,
+    resubmitCount:
+      typeof raw.resubmitCount === "number" ? raw.resubmitCount : undefined,
+    identityVerified:
+      typeof raw.identityVerified === "boolean"
+        ? raw.identityVerified
+        : undefined,
+    pendingLegalEntityUpgrade: toLegalEntityType(raw.pendingLegalEntityUpgrade),
     taxCode: (raw.taxCode as string | null | undefined) ?? null,
     phone: String(raw.phone ?? ""),
     city: String(raw.city ?? ""),

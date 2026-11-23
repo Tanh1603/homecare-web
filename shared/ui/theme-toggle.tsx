@@ -15,8 +15,33 @@ const THEME_OPTIONS: Array<{
   { mode: "system", label: "Hệ thống", icon: Monitor },
 ];
 
-export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export function ThemeToggle({
+  compact = false,
+  singleButton = false,
+}: {
+  compact?: boolean;
+  singleButton?: boolean;
+}) {
   const { theme, setTheme } = useTheme();
+
+  if (singleButton) {
+    const nextMode: ThemeMode =
+      theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+    const current =
+      THEME_OPTIONS.find((opt) => opt.mode === theme) ?? THEME_OPTIONS[0];
+    const CurrentIcon = current.icon;
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(nextMode)}
+        title={`Giao diện: ${current.label}`}
+        aria-label={`Đổi chế độ giao diện (hiện tại: ${current.label})`}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground cursor-pointer"
+      >
+        <CurrentIcon className="h-4 w-4" />
+      </button>
+    );
+  }
 
   return (
     <div

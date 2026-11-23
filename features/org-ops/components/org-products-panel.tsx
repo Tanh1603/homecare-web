@@ -25,6 +25,7 @@ import {
   focusFirstInvalidField,
 } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
 import {
@@ -731,25 +732,44 @@ export function OrgProductsPanel({
                   <TableCell>
                     <StatusBadge status={p.status} />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(p)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Sửa
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(p)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                  <TableCell className="w-[1%] whitespace-nowrap text-right">
+                    <RowActionsMenu
+                      ariaLabel={`Thao tác cho sản phẩm ${p.name}`}
+                      groups={[
+                        {
+                          id: "edit",
+                          items: [
+                            {
+                              id: "edit-product",
+                              label: "Chỉnh sửa sản phẩm",
+                              icon: Pencil,
+                              onSelect: () => openEdit(p),
+                            },
+                            {
+                              id: "edit-stock",
+                              label: "Cập nhật tồn kho",
+                              icon: Boxes,
+                              onSelect: () => {
+                                setStockEditId(p.id);
+                                setStockQty(String(p.availableQty));
+                              },
+                            },
+                          ],
+                        },
+                        {
+                          id: "danger",
+                          items: [
+                            {
+                              id: "delete-product",
+                              label: "Xóa sản phẩm",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => handleDelete(p),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               );

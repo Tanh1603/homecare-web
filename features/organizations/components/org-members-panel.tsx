@@ -18,6 +18,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -179,7 +180,7 @@ export function OrgMembersPanel({
                   <TableHead>Vai trò</TableHead>
                   <TableHead>Ngày tham gia</TableHead>
                   <TableHead>Trạng thái</TableHead>
-                  {canManage ? <TableHead>Thao tác</TableHead> : null}
+                  {canManage ? <TableHead className="text-right">Thao tác</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -238,18 +239,26 @@ export function OrgMembersPanel({
                         <StatusBadge status={m.status} />
                       </TableCell>
                       {canManage ? (
-                        <TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap text-right">
                           {!isSelf ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <RowActionsMenu
+                              ariaLabel={`Thao tác cho thành viên ${displayName}`}
                               disabled={busy}
-                              onClick={() => handleRemove(m)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Xóa
-                            </Button>
+                              groups={[
+                                {
+                                  id: "danger",
+                                  items: [
+                                    {
+                                      id: "remove",
+                                      label: "Xóa khỏi tổ chức",
+                                      icon: Trash2,
+                                      destructive: true,
+                                      onSelect: () => handleRemove(m),
+                                    },
+                                  ],
+                                },
+                              ]}
+                            />
                           ) : (
                             <span className="text-xs text-muted-foreground">
                               —

@@ -21,6 +21,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -273,43 +274,50 @@ export function OrgBookingsTable({
                   <TableCell>
                     <StatusBadge status={b.status} domain="booking" />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openDetail(b)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Chi tiết
-                      </Button>
-                      {canAssign ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === b.id}
-                          onClick={() => openAssignDialog(b)}
-                        >
-                          <UserCheck className="h-3.5 w-3.5" />
-                          {b.status === "ASSIGNED" ? "Đổi thợ" : "Điều phối"}
-                        </Button>
-                      ) : null}
-                      {canCancel ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busyId === b.id}
-                          onClick={() => {
-                            setCancelTarget(b);
-                            setReason("");
-                          }}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          Hủy
-                        </Button>
-                      ) : null}
-                    </div>
+                  <TableCell className="w-[1%] whitespace-nowrap text-right">
+                    <RowActionsMenu
+                      ariaLabel={`Thao tác cho lịch hẹn #${formatShortId(b.id)}`}
+                      disabled={busyId === b.id}
+                      groups={[
+                        {
+                          id: "view",
+                          items: [
+                            {
+                              id: "detail",
+                              label: "Xem chi tiết",
+                              icon: Eye,
+                              onSelect: () => openDetail(b),
+                            },
+                            {
+                              id: "assign",
+                              label:
+                                b.status === "ASSIGNED"
+                                  ? "Đổi kỹ thuật viên"
+                                  : "Điều phối kỹ thuật viên",
+                              icon: UserCheck,
+                              hidden: !canAssign,
+                              onSelect: () => openAssignDialog(b),
+                            },
+                          ],
+                        },
+                        {
+                          id: "danger",
+                          items: [
+                            {
+                              id: "cancel",
+                              label: "Hủy lịch hẹn",
+                              icon: XCircle,
+                              destructive: true,
+                              hidden: !canCancel,
+                              onSelect: () => {
+                                setCancelTarget(b);
+                                setReason("");
+                              },
+                            },
+                          ],
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               );

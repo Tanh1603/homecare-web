@@ -11,7 +11,7 @@ import { Info } from "lucide-react";
 import {
   LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
-  ORGANIZATION_TYPES,
+  V01_REGISTERABLE_ORGANIZATION_TYPES,
   ORGANIZATION_TYPE_LABELS,
   registerOrganizationSchema,
   type RegisterOrganizationInput,
@@ -79,7 +79,7 @@ export default function RegisterOrganizationPage() {
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <Image
-              src="/homecare_logo.png"
+              src="/homecare-logo.svg"
               alt="HomeCare Logo"
               width={40}
               height={40}
@@ -156,7 +156,7 @@ export default function RegisterOrganizationPage() {
                     {...form.register("type")}
                     className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {ORGANIZATION_TYPES.map((orgType) => (
+                    {V01_REGISTERABLE_ORGANIZATION_TYPES.map((orgType) => (
                       <option key={orgType} value={orgType}>
                         {ORGANIZATION_TYPE_LABELS[orgType]}
                       </option>

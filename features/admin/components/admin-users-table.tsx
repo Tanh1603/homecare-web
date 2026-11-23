@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -28,8 +29,15 @@ import {
 } from "@/shared/ui/table";
 import { formatDate } from "@/shared/lib/utils";
 
-type RoleFilter = "ALL" | "ADMIN" | "ORGANIZATION" | "TECHNICIAN" | "CUSTOMER";
+type RoleFilter = "ALL" | "ORGANIZATION" | "TECHNICIAN" | "CUSTOMER";
 type StatusFilter = "ALL" | "ACTIVE" | "SUSPENDED";
+
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Quản trị viên",
+  ORGANIZATION: "Tổ chức đối tác",
+  TECHNICIAN: "Kỹ thuật viên",
+  CUSTOMER: "Khách hàng",
+};
 
 export function AdminUsersTable({
   initialUsers,
@@ -88,7 +96,7 @@ export function AdminUsersTable({
       router.refresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể cập nhật trạng thái user"
+        err instanceof Error ? err.message : "Không thể cập nhật trạng thái người dùng"
       );
     } finally {
       setBusyId(null);
@@ -103,7 +111,7 @@ export function AdminUsersTable({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo tên, email hoặc UUID..."
+            placeholder="Tìm theo tên, email hoặc mã người dùng..."
             className="pl-9"
             aria-label="Tìm kiếm người dùng"
           />
@@ -117,10 +125,9 @@ export function AdminUsersTable({
             className="h-9 rounded-lg border border-input bg-surface px-3 text-xs font-medium text-foreground"
           >
             <option value="ALL">Tất cả vai trò</option>
-            <option value="ADMIN">ADMIN</option>
-            <option value="ORGANIZATION">ORGANIZATION</option>
-            <option value="TECHNICIAN">TECHNICIAN</option>
-            <option value="CUSTOMER">CUSTOMER</option>
+            <option value="ORGANIZATION">Tổ chức đối tác</option>
+            <option value="TECHNICIAN">Kỹ thuật viên</option>
+            <option value="CUSTOMER">Khách hàng</option>
           </select>
 
           <select
@@ -163,56 +170,75 @@ export function AdminUsersTable({
                 const isSuspended = u.status === "SUSPENDED";
                 return (
                   <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.fullName}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setInspectedUser(u)}
+                        className="text-left font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        {u.fullName}
+                      </button>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {u.email}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{u.role}</Badge>
+                      <Badge variant="outline">
+                        {ROLE_LABELS[u.role] ?? u.role}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatDate(u.createdAt)}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={u.status} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setInspectedUser(u)}
-                          aria-label={`Xem chi tiết ${u.email}`}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Chi tiết
-                        </Button>
-                        {isSuspended ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyId === u.id}
-                            onClick={() =>
-                              setConfirmTarget({ user: u, action: "REACTIVATE" })
-                            }
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                            Kích hoạt lại
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyId === u.id}
-                            onClick={() =>
-                              setConfirmTarget({ user: u, action: "SUSPEND" })
-                            }
-                          >
-                            <PauseCircle className="h-3.5 w-3.5 text-warning" />
-                            Tạm ngưng
-                          </Button>
-                        )}
-                      </div>
+                    <TableCell className="w-[1%] whitespace-nowrap text-right">
+                      <RowActionsMenu
+                        ariaLabel={`Mở menu thao tác cho ${u.email}`}
+                        disabled={busyId === u.id}
+                        groups={[
+                          {
+                            id: "inspect",
+                            items: [
+                              {
+                                id: "view",
+                                label: "Xem chi tiết tài khoản",
+                                icon: Eye,
+                                onSelect: () => setInspectedUser(u),
+                              },
+                            ],
+                          },
+                          {
+                            id: "account-status",
+                            items: [
+                              {
+                                id: "reactivate",
+                                label: "Kích hoạt lại tài khoản",
+                                icon: CheckCircle2,
+                                hidden: !isSuspended,
+                                onSelect: () =>
+                                  setConfirmTarget({
+                                    user: u,
+                                    action: "REACTIVATE",
+                                  }),
+                              },
+                              {
+                                id: "suspend",
+                                label: "Tạm ngưng tài khoản",
+                                icon: PauseCircle,
+                                destructive: true,
+                                hidden: isSuspended,
+                                onSelect: () =>
+                                  setConfirmTarget({
+                                    user: u,
+                                    action: "SUSPEND",
+                                  }),
+                              },
+                            ],
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
@@ -264,14 +290,16 @@ export function AdminUsersTable({
                 <StatusBadge status={inspectedUser.status} />
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Global Role</span>
-                <Badge variant="outline">{inspectedUser.role}</Badge>
+                <span className="text-xs text-muted-foreground">Vai trò hệ thống</span>
+                <Badge variant="outline">
+                  {ROLE_LABELS[inspectedUser.role] ?? inspectedUser.role}
+                </Badge>
               </div>
             </div>
 
             <div className="space-y-1">
               <dt className="text-xs font-medium text-muted-foreground">
-                Supabase User UUID
+                Mã người dùng
               </dt>
               <dd className="font-mono text-xs text-foreground break-all rounded-md bg-surface-secondary px-2.5 py-2 border border-border-subtle">
                 {inspectedUser.id}

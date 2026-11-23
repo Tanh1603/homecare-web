@@ -15,6 +15,7 @@ import {
   focusFirstInvalidField,
 } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
 import {
@@ -27,12 +28,23 @@ import {
 } from "@/shared/ui/table";
 import { formatVnd } from "@/shared/lib/utils";
 
+export const V01_SERVICE_CATEGORIES = [
+  { code: "AC_CLEANING_MAINTENANCE", label: "Vệ sinh & Bảo dưỡng máy lạnh", minDays: 0, maxDays: 30 },
+  { code: "AC_REPAIR_INSTALL", label: "Sửa chữa & Lắp đặt máy lạnh (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
+  { code: "ELECTRICAL_REPAIR", label: "Sửa chữa điện dân dụng (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
+  { code: "PLUMBING", label: "Sửa chữa ống nước & Thiết bị vệ sinh", minDays: 7, maxDays: 90 },
+  { code: "APPLIANCE_REPAIR", label: "Sửa chữa thiết bị gia dụng", minDays: 7, maxDays: 90 },
+  { code: "WATER_HEATER_GAS", label: "Máy nước nóng & Thiết bị gas (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
+] as const;
+
 interface ServiceFormValues {
   name: string;
   category: string;
   basePrice: string;
   priceType: "FIXED" | "QUOTE_REQUIRED";
   inspectionFee: string;
+  inspectionFeePolicy: "NO_FEE" | "CREDIT_FULL" | "NON_CREDITABLE";
+  workmanshipDurationDays: string;
   coverageCodes: string;
   duration: string;
   description: string;
@@ -41,14 +53,16 @@ interface ServiceFormValues {
 
 const DEFAULT_SERVICE_FORM: ServiceFormValues = {
   name: "",
-  category: "Điện lạnh",
+  category: "AC_CLEANING_MAINTENANCE",
   basePrice: "250000",
   priceType: "FIXED",
   inspectionFee: "0",
+  inspectionFeePolicy: "NO_FEE",
+  workmanshipDurationDays: "14",
   coverageCodes: "",
   duration: "60",
   description: "",
-  active: true,
+  active: false,
 };
 
 export function OrgServicesPanel({
@@ -108,6 +122,12 @@ export function OrgServicesPanel({
       basePrice: String(s.basePrice),
       priceType: s.priceType ?? "FIXED",
       inspectionFee: String(s.inspectionFee ?? 0),
+      inspectionFeePolicy:
+        (s as { inspectionFeePolicy?: ServiceFormValues["inspectionFeePolicy"] })
+          .inspectionFeePolicy ?? "NO_FEE",
+      workmanshipDurationDays: String(
+        (s as { workmanshipDurationDays?: number }).workmanshipDurationDays ?? 14
+      ),
       coverageCodes: (s.coverageAreas ?? [])
         .map((c) => `${c.locationCode}:${c.level}`)
         .join(", "),
@@ -131,9 +151,16 @@ export function OrgServicesPanel({
       nextErrors.basePrice = "Giá niêm yết không hợp lệ";
     }
     const fee = Number(form.inspectionFee || 0);
-    if (!Number.isFinite(fee) || fee < 0 || fee > 500000) {
-      nextErrors.inspectionFee =
-        "Phí khảo sát phải trong khung 0 – 500.000 VNĐ";
+    if (!Number.isFinite(fee) || fee < 0) {
+      nextErrors.inspectionFee = "Phí khảo sát phải >= 0 VNĐ";
+    }
+    const catMeta = V01_SERVICE_CATEGORIES.find((c) => c.code === form.category);
+    const wDays = Number(form.workmanshipDurationDays || 0);
+    if (
+      catMeta &&
+      (!Number.isFinite(wDays) || wDays < catMeta.minDays || wDays > catMeta.maxDays)
+    ) {
+      nextErrors.workmanshipDurationDays = `Bảo hành tay nghề cho ${catMeta.code} phải trong [${catMeta.minDays}, ${catMeta.maxDays}] ngày`;
     }
     const dur = Number(form.duration);
     if (!Number.isFinite(dur) || dur < 15) {
@@ -151,14 +178,24 @@ export function OrgServicesPanel({
     }
     setSaving(true);
     try {
+      const fee = Math.max(0, Number(form.inspectionFee) || 0);
       const payload = {
         name: form.name.trim(),
         category: form.category.trim(),
         description: form.description.trim() || undefined,
         basePrice: Math.max(0, Number(form.basePrice) || 0),
+        priceType: form.priceType,
+        inspectionFee: fee,
+        inspectionFeePolicy: form.inspectionFeePolicy,
+        workmanshipDurationDays: Number(form.workmanshipDurationDays) || 7,
         estimatedDurationMinutes: Math.max(15, Number(form.duration) || 60),
         active: form.active,
       };
+      if (fee > 500000) {
+        toast.warning(
+          "Phí khảo sát vượt ngưỡng cảnh báo mềm (500.000 VNĐ) và sẽ được gắn cờ hậu kiểm Admin."
+        );
+      }
       if (editTarget) {
         const updated = await orgOpsHttpApi.updateService(
           organizationId,
@@ -257,25 +294,35 @@ export function OrgServicesPanel({
                 <TableCell>
                   <StatusBadge status={s.active ? "ACTIVE" : "INACTIVE"} />
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openEdit(s)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Sửa
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(s)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <RowActionsMenu
+                    ariaLabel={`Thao tác cho dịch vụ ${s.name}`}
+                    groups={[
+                      {
+                        id: "edit",
+                        items: [
+                          {
+                            id: "edit-service",
+                            label: "Chỉnh sửa dịch vụ",
+                            icon: Pencil,
+                            onSelect: () => openEdit(s),
+                          },
+                        ],
+                      },
+                      {
+                        id: "danger",
+                        items: [
+                          {
+                            id: "delete-service",
+                            label: "Xóa dịch vụ",
+                            icon: Trash2,
+                            destructive: true,
+                            onSelect: () => handleDelete(s),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}

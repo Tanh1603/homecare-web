@@ -17,7 +17,7 @@ export default async function AdminOrganizationsPage({
     <div className="space-y-6">
       <PageHeader
         title="Quản lý Tổ chức đối tác"
-        description="Phê duyệt (APPROVED), từ chối (REJECTED), tạm ngưng (SUSPENDED) hoặc kích hoạt lại hồ sơ Organization."
+        description="Phê duyệt, quản lý trạng thái và xử lý kháng cáo tổ chức đối tác."
       />
       <OrganizationsTable initialData={organizations} />
       <ServerPagination

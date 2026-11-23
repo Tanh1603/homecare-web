@@ -10,6 +10,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -103,15 +104,23 @@ export function OrgOrdersTable({
                 <TableCell>
                   <StatusBadge status={o.status} />
                 </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedOrder(o)}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Xem
-                  </Button>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <RowActionsMenu
+                    ariaLabel={`Thao tác cho đơn hàng #${formatShortId(o.id)}`}
+                    groups={[
+                      {
+                        id: "view",
+                        items: [
+                          {
+                            id: "detail",
+                            label: "Xem chi tiết đơn",
+                            icon: Eye,
+                            onSelect: () => setSelectedOrder(o),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
