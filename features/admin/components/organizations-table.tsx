@@ -1,0 +1,378 @@
+"use client";
+
+import * as React from "react";
+import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
+import { CheckCircle2, Eye, PauseCircle, XCircle } from "lucide-react";
+import { toast } from "sonner";
+import {
+  LEGAL_ENTITY_TYPE_LABELS,
+  ORGANIZATION_TYPE_LABELS,
+  type Organization,
+  type OrganizationStatus,
+} from "@/features/organizations/contracts/organization";
+import { organizationsApi } from "@/features/organizations/api";
+import { DataTable } from "@/shared/ui/data-table";
+import { StatusBadge } from "@/shared/ui/status-badge";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { ContextInspector } from "@/shared/ui/context-inspector";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { cn, formatDateTime } from "@/shared/lib/utils";
+
+type StatusFilter = "ALL" | OrganizationStatus;
+
+const FILTER_TABS: { value: StatusFilter; label: string }[] = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "PENDING", label: "Chờ duyệt" },
+  { value: "APPROVED", label: "Đã duyệt" },
+  { value: "SUSPENDED", label: "Tạm ngưng" },
+  { value: "REJECTED", label: "Từ chối" },
+];
+
+export function OrganizationsTable({
+  initialData,
+}: {
+  initialData: Organization[];
+}) {
+  const [rows, setRows] = React.useState<Organization[]>(initialData);
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
+  const [rejectTarget, setRejectTarget] = React.useState<Organization | null>(
+    null
+  );
+  const [detailTarget, setDetailTarget] = React.useState<Organization | null>(
+    null
+  );
+  const [reason, setReason] = React.useState("");
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  const filteredRows = React.useMemo(() => {
+    if (statusFilter === "ALL") return rows;
+    return rows.filter((r) => r.status === statusFilter);
+  }, [rows, statusFilter]);
+
+  async function handleReview(
+    org: Organization,
+    status: "APPROVED" | "REJECTED" | "SUSPENDED",
+    reviewReason?: string
+  ) {
+    setBusyId(org.id);
+    try {
+      const updated = await organizationsApi.review(org.id, {
+        status,
+        reason: reviewReason,
+      });
+      setRows((prev) => prev.map((r) => (r.id === org.id ? updated : r)));
+      toast.success(`Đã cập nhật trạng thái ${org.name} → ${status}`);
+      setRejectTarget(null);
+      setReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const columns: LegacyColumnDef<Organization, unknown>[] = [
+    {
+      accessorKey: "name",
+      header: "Tổ chức",
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium text-foreground">{row.original.name}</p>
+            <Badge variant="outline" className="text-[11px]">
+              {ORGANIZATION_TYPE_LABELS[row.original.type] ?? row.original.type}
+            </Badge>
+            {row.original.legalEntityType ? (
+              <Badge variant="secondary" className="text-[11px]">
+                {LEGAL_ENTITY_TYPE_LABELS[row.original.legalEntityType] ??
+                  row.original.legalEntityType}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {row.original.taxCode ? `MST: ${row.original.taxCode} · ` : ""}
+            {row.original.city}
+          </p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "phone",
+      header: "Liên hệ & Địa chỉ",
+      cell: ({ row }) => (
+        <div className="text-xs space-y-0.5">
+          <p className="font-medium text-foreground">{row.original.phone}</p>
+          <p className="max-w-[240px] truncate text-muted-foreground">
+            {row.original.address || row.original.city}
+          </p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Trạng thái",
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          <StatusBadge status={row.original.status} />
+          {row.original.rejectReason ? (
+            <p className="max-w-[200px] truncate text-[11px] text-destructive">
+              {row.original.rejectReason}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Thao tác",
+      cell: ({ row }) => {
+        const org = row.original;
+        const disabled = busyId === org.id;
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDetailTarget(org)}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Chi tiết
+            </Button>
+            {org.status !== "APPROVED" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => handleReview(org, "APPROVED")}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                Duyệt
+              </Button>
+            ) : null}
+            {org.status === "PENDING" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => setRejectTarget(org)}
+              >
+                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                Từ chối
+              </Button>
+            ) : null}
+            {org.status === "APPROVED" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() =>
+                  handleReview(org, "SUSPENDED", "Tạm ngưng bởi quản trị viên")
+                }
+              >
+                <PauseCircle className="h-3.5 w-3.5 text-warning" />
+                Tạm ngưng
+              </Button>
+            ) : null}
+            {org.status === "SUSPENDED" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyId === org.id}
+                onClick={async () => {
+                  setBusyId(org.id);
+                  try {
+                    const updated = await organizationsApi.reactivate(org.id);
+                    setRows((prev) =>
+                      prev.map((r) => (r.id === org.id ? updated : r))
+                    );
+                    toast.success(`Đã kích hoạt lại "${org.name}"`);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Không thể kích hoạt lại tổ chức"
+                    );
+                  } finally {
+                    setBusyId(null);
+                  }
+                }}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                Kích hoạt lại
+              </Button>
+            ) : null}
+          </div>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {FILTER_TABS.map((tab) => {
+          const count =
+            tab.value === "ALL"
+              ? rows.length
+              : rows.filter((r) => r.status === tab.value).length;
+          const active = statusFilter === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setStatusFilter(tab.value)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                active
+                  ? "border-primary/30 bg-accent text-accent-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
+              )}
+            >
+              <span>{tab.label}</span>
+              <span className="tabular-nums opacity-75">({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <DataTable
+        data={filteredRows}
+        columns={columns}
+        searchPlaceholder="Tìm tên tổ chức, MST, thành phố..."
+        emptyMessage="Không có hồ sơ tổ chức nào khớp bộ lọc."
+      />
+
+      <ContextInspector
+        open={Boolean(detailTarget)}
+        onClose={() => setDetailTarget(null)}
+        title={`Hồ sơ tổ chức: ${detailTarget?.name ?? ""}`}
+        subtitle="Chi tiết pháp lý, thông tin liên hệ và trạng thái kiểm duyệt."
+        className="max-w-lg"
+      >
+        {detailTarget ? (
+          <div className="grid gap-3.5 text-sm sm:grid-cols-2">
+            <div>
+              <span className="text-xs text-muted-foreground">
+                Lĩnh vực hoạt động
+              </span>
+              <p className="font-medium">
+                {ORGANIZATION_TYPE_LABELS[detailTarget.type] ??
+                  detailTarget.type}
+              </p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">
+                Loại hình pháp lý
+              </span>
+              <p className="font-medium">
+                {detailTarget.legalEntityType
+                  ? (LEGAL_ENTITY_TYPE_LABELS[detailTarget.legalEntityType] ??
+                    detailTarget.legalEntityType)
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Trạng thái</span>
+              <div className="mt-0.5">
+                <StatusBadge status={detailTarget.status} />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Mã số thuế</span>
+              <p className="font-medium">{detailTarget.taxCode || "—"}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Điện thoại</span>
+              <p className="font-medium">{detailTarget.phone || "—"}</p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Địa chỉ</span>
+              <p className="font-medium">
+                {detailTarget.address || detailTarget.city || "—"}
+                {detailTarget.address && detailTarget.city
+                  ? `, ${detailTarget.city}`
+                  : ""}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Mô tả</span>
+              <p className="font-medium whitespace-pre-wrap">
+                {detailTarget.description || "—"}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">
+                Ngày tạo / Cập nhật
+              </span>
+              <p className="text-xs">
+                {formatDateTime(detailTarget.createdAt)} ·{" "}
+                {formatDateTime(detailTarget.updatedAt)}
+              </p>
+            </div>
+            {detailTarget.rejectReason ? (
+              <div className="sm:col-span-2">
+                <span className="text-xs text-muted-foreground">
+                  Lý do từ chối / Tạm ngưng
+                </span>
+                <p className="font-medium text-destructive">
+                  {detailTarget.rejectReason}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </ContextInspector>
+
+      <Dialog
+        open={Boolean(rejectTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRejectTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Từ chối hồ sơ: {rejectTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="reject-reason">Lý do từ chối</Label>
+              <Input
+                id="reject-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="VD: Thiếu giấy phép kinh doanh hợp lệ"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRejectTarget(null)}>
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!rejectTarget || busyId === rejectTarget.id}
+                onClick={() =>
+                  rejectTarget &&
+                  handleReview(
+                    rejectTarget,
+                    "REJECTED",
+                    reason || "Hồ sơ chưa đạt yêu cầu"
+                  )
+                }
+              >
+                Xác nhận từ chối
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

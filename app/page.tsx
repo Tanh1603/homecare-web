@@ -1,69 +1,241 @@
 import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  ClipboardCheck,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
+import { getServerAuthContext } from "@/shared/auth/guards";
+import { isAdminRole } from "@/shared/auth/roles";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/shared/ui/card";
 
-export default function Home() {
+const WORKFLOW_STEPS = [
+  {
+    icon: Building2,
+    title: "Đăng ký đối tác",
+    detail: "Tổ chức gửi hồ sơ pháp lý và khu vực hoạt động qua cổng đối tác.",
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Admin xét duyệt",
+    detail: "Quản trị viên đối chiếu thông tin và phê duyệt trạng thái APPROVED.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Đồng bộ phân quyền",
+    detail: "Hệ thống tự động cấp quyền ORGANIZATION trên Supabase RBAC.",
+  },
+  {
+    icon: SlidersHorizontal,
+    title: "Vận hành trực tiếp",
+    detail: "Điều phối kỹ thuật viên, xử lý booking, đơn hàng và bảo hành.",
+  },
+];
+
+export default async function HomePage() {
+  const ctx = await getServerAuthContext();
+  const isSignedIn = Boolean(ctx);
+  const isAdmin = ctx ? isAdminRole(ctx.roles) : false;
+  const primaryHref = isAdmin ? "/admin" : "/org";
+  const primaryLabel = isAdmin ? "Vào Admin Portal" : "Vào Organization Portal";
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+    <div className="min-h-screen bg-background flex flex-col justify-between">
+      <header className="border-b border-border bg-card/80">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5">
             <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+              src="/homecare_logo.png"
+              alt="HomeCare Logo"
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-lg object-contain"
+              priority
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <span className="text-sm font-semibold tracking-tight text-foreground">
+              HomeCare Platform
+            </span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle compact />
+            {isSignedIn ? (
+              <>
+                <span className="hidden text-xs text-muted-foreground sm:inline">
+                  {ctx?.email}
+                </span>
+                <Button asChild size="sm">
+                  <Link href={primaryHref}>
+                    {primaryLabel}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/register/org">Đăng ký đối tác</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/login">Đăng nhập</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:py-16 space-y-12">
+        <section className="max-w-3xl space-y-4">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl text-balance">
+            HomeCare Operations & Partner Portals
+          </h1>
+          <p className="text-base text-muted-foreground leading-relaxed max-w-2xl">
+            Cổng quản trị và vận hành tập trung kết nối trực tiếp tới hệ thống
+            microservices HomeCare API và xác thực Supabase Auth.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {isSignedIn ? (
+              <Button asChild size="lg">
+                <Link href={primaryHref}>
+                  {primaryLabel}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild size="lg">
+                  <Link href="/org">
+                    Vào Organization Portal
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="lg">
+                  <Link href="/admin">
+                    Vào Admin Portal
+                    <ShieldCheck className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-6 md:grid-cols-2">
+          <Card className="flex flex-col justify-between transition-shadow duration-150 hover:shadow-md">
+            <CardHeader className="space-y-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <CardTitle className="text-lg">Admin Portal</CardTitle>
+                <CardDescription className="leading-relaxed">
+                  Phê duyệt hồ sơ đối tác Organization, giám sát danh sách tài
+                  khoản người dùng Supabase, kỹ thuật viên và danh mục dịch vụ —
+                  linh kiện toàn nền tảng.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                  Xét duyệt / từ chối / tạm ngưng hồ sơ Organization
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                  Theo dõi người dùng, kỹ thuật viên và danh mục chuẩn
+                </li>
+              </ul>
+              <Button asChild className="w-full">
+                <Link href="/admin">
+                  Mở Admin Portal
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="flex flex-col justify-between transition-shadow duration-150 hover:shadow-md">
+            <CardHeader className="space-y-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-bg text-success">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <CardTitle className="text-lg">Organization Portal</CardTitle>
+                <CardDescription className="leading-relaxed">
+                  Không gian vận hành đa tổ chức dành cho trung tâm bảo hành và
+                  đơn vị cung ứng dịch vụ gia đình, vật tư chính hãng.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                  Chuyển đổi nhanh giữa nhiều tổ chức trực thuộc
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                  Quản lý booking, đơn hàng, kỹ thuật viên, bảo hành & thành viên
+                </li>
+              </ul>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button asChild className="flex-1">
+                  <Link href="/org">
+                    Mở Organization Portal
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                {!isAdmin ? (
+                  <Button asChild variant="outline" className="flex-1">
+                    <Link href="/register/org">Đăng ký đối tác</Link>
+                  </Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="text-sm font-semibold text-foreground">
+            Quy trình kích hoạt đối tác trên hệ thống
+          </h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {WORKFLOW_STEPS.map((step) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.title} className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Icon className="h-4 w-4 text-primary shrink-0" />
+                    <span>{step.title}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {step.detail}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-border bg-card py-5">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 text-xs text-muted-foreground sm:flex-row sm:px-6">
+          <span>HomeCare Services & Commerce Ecosystem</span>
+          <span>API Gateway: /api/v1 · Auth: Supabase JWT</span>
+        </div>
+      </footer>
     </div>
   );
 }
