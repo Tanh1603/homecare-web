@@ -14,19 +14,17 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   type Organization,
   type OrganizationStatus,
 } from "@/features/organizations/contracts/organization";
-import { organizationsApi } from "@/features/organizations/api";
 import {
-  ORG_STATUS_LABELS,
-  formatOrgClassification,
-  formatShortCode,
-} from "@/features/admin/lib/admin-labels";
+  approveOrganizationAction,
+  reactivateOrganizationAction,
+} from "@/features/admin/lib/org-review-actions";
+import { formatOrgClassification } from "@/features/admin/lib/admin-labels";
 import {
   OrganizationActionDialogs,
   type OrganizationDialogState,
@@ -77,15 +75,8 @@ export function OrganizationsTable({
   async function handleQuickApprove(org: Organization) {
     setBusyId(org.id);
     try {
-      const updated = await organizationsApi.review(org.id, {
-        status: "APPROVED",
-      });
-      replaceRow(updated);
-      toast.success(
-        `Đã cập nhật trạng thái ${org.name} → ${ORG_STATUS_LABELS.APPROVED}`
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+      const updated = await approveOrganizationAction(org);
+      if (updated) replaceRow(updated);
     } finally {
       setBusyId(null);
     }
@@ -94,15 +85,8 @@ export function OrganizationsTable({
   async function handleReactivate(org: Organization) {
     setBusyId(org.id);
     try {
-      const updated = await organizationsApi.reactivate(org.id);
-      replaceRow(updated);
-      toast.success(`Đã kích hoạt lại "${org.name}"`);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể kích hoạt lại tổ chức"
-      );
+      const updated = await reactivateOrganizationAction(org);
+      if (updated) replaceRow(updated);
     } finally {
       setBusyId(null);
     }
@@ -191,15 +175,6 @@ export function OrganizationsTable({
             <RowActionsMenu
               ariaLabel={`Mở menu thao tác cho ${org.name}`}
               disabled={disabled}
-              primaryAction={
-                org.status === "PENDING"
-                  ? {
-                      label: "Duyệt",
-                      icon: CheckCircle2,
-                      onClick: () => handleQuickApprove(org),
-                    }
-                  : null
-              }
               groups={[
                 {
                   id: "navigation",
@@ -392,12 +367,6 @@ export function OrganizationsTable({
                 {detailTarget.phone || "—"}
               </p>
             </div>
-            <div>
-              <span className="text-xs text-muted-foreground">Mã tổ chức</span>
-              <p className="font-mono text-xs text-foreground">
-                #{formatShortCode(detailTarget.id)}
-              </p>
-            </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Địa chỉ</span>
               <p className="font-medium">
@@ -417,7 +386,10 @@ export function OrganizationsTable({
               <span className="text-xs text-muted-foreground">
                 Tài liệu chứng minh pháp lý
               </span>
-              <EvidenceDocumentsList value={detailTarget.identityEvidenceRefs} />
+              <EvidenceDocumentsList
+                value={detailTarget.identityEvidenceRefs}
+                organizationId={detailTarget.id}
+              />
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">

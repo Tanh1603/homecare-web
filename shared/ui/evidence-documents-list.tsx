@@ -1,16 +1,49 @@
-import { ExternalLink, FileText } from "lucide-react";
+"use client";
+
+import * as React from "react";
+import { ExternalLink, FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { LEGAL_ENTITY_TYPE_LABELS } from "@/features/organizations/contracts/organization";
+import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
 import { parseUploadedMediaRefs } from "@/shared/api/media-upload";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 
 export function EvidenceDocumentsList({
   value,
+  organizationId,
   emptyText = "Chưa có tài liệu chứng minh pháp lý nào được tải lên.",
 }: {
   value?: string | null;
+  organizationId?: string;
   emptyText?: string;
 }) {
   const items = parseUploadedMediaRefs(value);
+  const [openingKey, setOpeningKey] = React.useState<string | null>(null);
+
+  async function handleOpenSigned(objectKey: string) {
+    if (!organizationId) return;
+    setOpeningKey(objectKey);
+    try {
+      const res = await fetch(
+        `/api/gateway/organizations/${encodeURIComponent(organizationId)}/evidence/signed-url?objectKey=${encodeURIComponent(objectKey)}`,
+        { headers: { "x-homecare-scope": "personal" } }
+      );
+      const json = (await res.json()) as ApiResponse<{ signedUrl?: string }>;
+      const data = unwrapApiResponse(json);
+      if (!data.signedUrl) {
+        toast.error("Không thể tạo liên kết xem tài liệu.");
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể mở tài liệu."
+      );
+    } finally {
+      setOpeningKey(null);
+    }
+  }
 
   if (items.length === 0) {
     if (value && value.trim()) {
@@ -31,6 +64,7 @@ export function EvidenceDocumentsList({
             item.documentType as keyof typeof LEGAL_ENTITY_TYPE_LABELS
           ] ?? item.documentType;
         const isUrl = /^https?:\/\//i.test(item.objectKey);
+        const isOpening = openingKey === item.objectKey;
 
         return (
           <li
@@ -46,9 +80,11 @@ export function EvidenceDocumentsList({
                 <p className="truncate font-medium text-foreground">
                   {item.fileName}
                 </p>
-                <p className="truncate font-mono text-[11px] text-muted-foreground">
-                  {item.objectKey}
-                </p>
+                {item.contentType ? (
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {item.contentType}
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -68,6 +104,22 @@ export function EvidenceDocumentsList({
                   Xem
                   <ExternalLink className="h-3 w-3" />
                 </a>
+              ) : organizationId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isOpening}
+                  onClick={() => void handleOpenSigned(item.objectKey)}
+                  className="h-7 px-2 text-xs text-primary"
+                >
+                  {isOpening ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-3 w-3" />
+                  )}
+                  Xem
+                </Button>
               ) : null}
             </div>
           </li>

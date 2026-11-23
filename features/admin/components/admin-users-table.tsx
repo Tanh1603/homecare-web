@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
@@ -111,35 +112,39 @@ export function AdminUsersTable({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo tên, email hoặc mã người dùng..."
+            placeholder="Tìm theo tên hoặc email..."
             className="pl-9"
             aria-label="Tìm kiếm người dùng"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Lọc theo vai trò"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-xs font-medium text-foreground"
-          >
-            <option value="ALL">Tất cả vai trò</option>
-            <option value="ORGANIZATION">Tổ chức đối tác</option>
-            <option value="TECHNICIAN">Kỹ thuật viên</option>
-            <option value="CUSTOMER">Khách hàng</option>
-          </select>
+          <div className="w-40">
+            <NativeSelect
+              aria-label="Lọc theo vai trò"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="ALL">Tất cả vai trò</NativeSelectOption>
+              <NativeSelectOption value="ORGANIZATION">Tổ chức đối tác</NativeSelectOption>
+              <NativeSelectOption value="TECHNICIAN">Kỹ thuật viên</NativeSelectOption>
+              <NativeSelectOption value="CUSTOMER">Khách hàng</NativeSelectOption>
+            </NativeSelect>
+          </div>
 
-          <select
-            aria-label="Lọc theo trạng thái"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-xs font-medium text-foreground"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Hoạt động</option>
-            <option value="SUSPENDED">Tạm ngưng</option>
-          </select>
+          <div className="w-40">
+            <NativeSelect
+              aria-label="Lọc theo trạng thái"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
+              <NativeSelectOption value="ACTIVE">Hoạt động</NativeSelectOption>
+              <NativeSelectOption value="SUSPENDED">Tạm ngưng</NativeSelectOption>
+            </NativeSelect>
+          </div>
         </div>
       </div>
 
@@ -295,15 +300,6 @@ export function AdminUsersTable({
                   {ROLE_LABELS[inspectedUser.role] ?? inspectedUser.role}
                 </Badge>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <dt className="text-xs font-medium text-muted-foreground">
-                Mã người dùng
-              </dt>
-              <dd className="font-mono text-xs text-foreground break-all rounded-md bg-surface-secondary px-2.5 py-2 border border-border-subtle">
-                {inspectedUser.id}
-              </dd>
             </div>
 
             <div className="space-y-1">

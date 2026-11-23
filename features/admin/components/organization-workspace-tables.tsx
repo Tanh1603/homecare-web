@@ -24,7 +24,6 @@ import {
   formatPriceType,
   formatProductType,
   formatServiceCategory,
-  formatShortCode,
 } from "@/features/admin/lib/admin-labels";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -57,10 +56,6 @@ function WorkspaceSearchToolbar({
 }) {
   const router = useRouter();
   const [value, setValue] = React.useState(initialQuery);
-
-  React.useEffect(() => {
-    setValue(initialQuery);
-  }, [initialQuery]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -113,6 +108,7 @@ export function OrgWorkspaceTechniciansTable({
   return (
     <div className="space-y-4">
       <WorkspaceSearchToolbar
+        key={initialQuery}
         basePath={`/admin/organizations/${organizationId}/technicians`}
         initialQuery={initialQuery}
         placeholder="Tìm theo tên hoặc chuyên môn kỹ thuật viên..."
@@ -159,9 +155,6 @@ export function OrgWorkspaceTechniciansTable({
                     >
                       {tech.fullName}
                     </button>
-                    <p className="font-mono text-[11px] text-muted-foreground">
-                      #{formatShortCode(tech.id)}
-                    </p>
                   </TableCell>
                   <TableCell className="text-xs text-foreground">
                     {tech.specialty}
@@ -212,9 +205,7 @@ export function OrgWorkspaceTechniciansTable({
         open={Boolean(inspected)}
         onClose={() => setInspected(null)}
         title={inspected?.fullName ?? "Chi tiết kỹ thuật viên"}
-        subtitle={
-          inspected ? `Mã KTV: #${formatShortCode(inspected.id)}` : undefined
-        }
+        subtitle={inspected?.specialty}
       >
         {inspected ? (
           <dl className="space-y-4 text-sm">
@@ -262,14 +253,6 @@ export function OrgWorkspaceTechniciansTable({
                 </dd>
               </div>
             </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">
-                Mã hồ sơ người dùng
-              </dt>
-              <dd className="mt-1 rounded-md border border-border-subtle bg-surface-secondary px-2.5 py-2 font-mono text-xs break-all">
-                {inspected.profileId}
-              </dd>
-            </div>
           </dl>
         ) : null}
       </ContextInspector>
@@ -291,6 +274,7 @@ export function OrgWorkspaceServicesTable({
   return (
     <div className="space-y-4">
       <WorkspaceSearchToolbar
+        key={initialQuery}
         basePath={`/admin/organizations/${organizationId}/services`}
         initialQuery={initialQuery}
         placeholder="Tìm tên dịch vụ cung cấp..."
@@ -457,12 +441,6 @@ export function OrgWorkspaceServicesTable({
                 {inspected.description || "Không có mô tả."}
               </dd>
             </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Mã dịch vụ</dt>
-              <dd className="mt-1 rounded-md border border-border-subtle bg-surface-secondary px-2.5 py-2 font-mono text-xs break-all">
-                {inspected.id}
-              </dd>
-            </div>
           </dl>
         ) : null}
       </ContextInspector>
@@ -484,6 +462,7 @@ export function OrgWorkspaceProductsTable({
   return (
     <div className="space-y-4">
       <WorkspaceSearchToolbar
+        key={initialQuery}
         basePath={`/admin/organizations/${organizationId}/products`}
         initialQuery={initialQuery}
         placeholder="Tìm tên sản phẩm, mã SKU hoặc thương hiệu..."

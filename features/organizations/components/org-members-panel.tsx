@@ -18,6 +18,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
@@ -208,24 +209,27 @@ export function OrgMembersPanel({
                       </TableCell>
                       <TableCell>
                         {canManage && !isSelf ? (
-                          <select
-                            aria-label={`Vai trò của ${displayName}`}
-                            value={m.role}
-                            disabled={busy}
-                            onChange={(e) =>
-                              handleRoleChange(
-                                m,
-                                e.target.value as (typeof ORG_ROLES)[number]
-                              )
-                            }
-                            className="h-8 rounded-md border border-input bg-card px-2 text-xs font-medium text-foreground"
-                          >
-                            {ORG_ROLES.map((r) => (
-                              <option key={r} value={r}>
-                                {formatOrgRoleLabel(r)}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="w-44">
+                            <NativeSelect
+                              size="sm"
+                              aria-label={`Vai trò của ${displayName}`}
+                              value={m.role}
+                              disabled={busy}
+                              onChange={(e) =>
+                                handleRoleChange(
+                                  m,
+                                  e.target.value as (typeof ORG_ROLES)[number]
+                                )
+                              }
+                              className="text-xs font-medium"
+                            >
+                              {ORG_ROLES.map((r) => (
+                                <NativeSelectOption key={r} value={r}>
+                                  {formatOrgRoleLabel(r)}
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                          </div>
                         ) : (
                           <Badge variant="outline">
                             {formatOrgRoleLabel(m.role)}
@@ -308,21 +312,20 @@ export function OrgMembersPanel({
               }
             >
               <FormField label="Vai trò" htmlFor="member-role" required>
-                <select
+                <NativeSelect
                   id="member-role"
                   value={role}
                   disabled={!provisioned}
                   onChange={(e) =>
                     setRole(e.target.value as (typeof ORG_ROLES)[number])
                   }
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   {ORG_ROLES.map((r) => (
-                    <option key={r} value={r}>
+                    <NativeSelectOption key={r} value={r}>
                       {formatOrgRoleLabel(r)}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </FormField>
             </FormSection>
           </form>

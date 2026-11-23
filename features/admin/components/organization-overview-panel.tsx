@@ -13,15 +13,15 @@ import {
   Wrench,
   Building2,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   type Organization,
 } from "@/features/organizations/contracts/organization";
-import { organizationsApi } from "@/features/organizations/api";
-import type { WorkspaceSummaryData } from "@/features/admin/api/organization-workspace.server";
-import { ORG_STATUS_LABELS } from "@/features/admin/lib/admin-labels";
+import {
+  approveOrganizationAction,
+  reactivateOrganizationAction,
+} from "@/features/admin/lib/org-review-actions";
 import {
   OrganizationActionDialogs,
   type OrganizationDialogState,
@@ -30,6 +30,7 @@ import { Button } from "@/shared/ui/button";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { parseUploadedMediaRefs } from "@/shared/api/media-upload";
 import { cn, formatDateTime } from "@/shared/lib/utils";
+import type { WorkspaceSummaryData } from "@/features/admin/api/organization-workspace.server";
 
 interface OperationalAlert {
   id: string;
@@ -53,33 +54,29 @@ export function OrganizationOverviewPanel({
   summary: WorkspaceSummaryData;
 }) {
   const router = useRouter();
-  const [org, setOrg] = React.useState<Organization>(organization);
+  const [localOrg, setLocalOrg] = React.useState<{
+    baseUpdatedAt: string;
+    data: Organization;
+  } | null>(null);
+  const org =
+    localOrg && localOrg.baseUpdatedAt === organization.updatedAt
+      ? localOrg.data
+      : organization;
   const [dialog, setDialog] = React.useState<OrganizationDialogState>(null);
   const [busy, setBusy] = React.useState(false);
-
-  React.useEffect(() => {
-    setOrg(organization);
-  }, [organization]);
 
   const basePath = `/admin/organizations/${org.id}`;
 
   function handleUpdated(updated: Organization) {
-    setOrg(updated);
+    setLocalOrg({ baseUpdatedAt: organization.updatedAt, data: updated });
     router.refresh();
   }
 
   async function handleQuickApprove() {
     setBusy(true);
     try {
-      const updated = await organizationsApi.review(org.id, {
-        status: "APPROVED",
-      });
-      handleUpdated(updated);
-      toast.success(
-        `Đã cập nhật trạng thái ${org.name} → ${ORG_STATUS_LABELS.APPROVED}`
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+      const updated = await approveOrganizationAction(org);
+      if (updated) handleUpdated(updated);
     } finally {
       setBusy(false);
     }
@@ -88,15 +85,8 @@ export function OrganizationOverviewPanel({
   async function handleReactivate() {
     setBusy(true);
     try {
-      const updated = await organizationsApi.reactivate(org.id);
-      handleUpdated(updated);
-      toast.success(`Đã kích hoạt lại "${org.name}"`);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể kích hoạt lại tổ chức"
-      );
+      const updated = await reactivateOrganizationAction(org);
+      if (updated) handleUpdated(updated);
     } finally {
       setBusy(false);
     }

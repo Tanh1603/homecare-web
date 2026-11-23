@@ -3,7 +3,8 @@ import {
   ORGANIZATION_TYPE_LABELS,
 } from "@/features/organizations/contracts/organization";
 import { organizationWorkspaceServerApi } from "@/features/admin/api/organization-workspace.server";
-import { formatShortCode } from "@/features/admin/lib/admin-labels";
+import { AdminQualificationsPanel } from "@/features/admin/components/admin-qualifications-panel";
+import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { ErrorState } from "@/shared/ui/error-state";
 import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
@@ -93,17 +94,6 @@ export default async function AdminOrganizationProfilePage({
                 : ""}
             </dd>
           </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs text-muted-foreground">
-              Mã định danh tổ chức
-            </dt>
-            <dd className="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-surface-secondary px-3 py-2 font-mono text-xs text-foreground break-all">
-              <span>{org.id}</span>
-              <span className="text-muted-foreground">
-                (#{formatShortCode(org.id)})
-              </span>
-            </dd>
-          </div>
         </dl>
       </section>
 
@@ -118,9 +108,14 @@ export default async function AdminOrganizationProfilePage({
           </p>
         </div>
         <div className="p-5">
-          <EvidenceDocumentsList value={org.identityEvidenceRefs} />
+          <EvidenceDocumentsList
+            value={org.identityEvidenceRefs}
+            organizationId={org.id}
+          />
         </div>
       </section>
+
+      <AdminQualificationsPanel organizationId={org.id} />
 
       <section className="rounded-xl border border-border bg-surface">
         <div className="border-b border-border px-5 py-3.5">
@@ -167,14 +162,14 @@ export default async function AdminOrganizationProfilePage({
             </dd>
           </div>
           {org.rejectReason ? (
-            <div className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5">
-              <dt className="text-xs font-medium text-destructive">
+            <Alert variant="destructive" className="sm:col-span-2">
+              <AlertTitle className="text-xs">
                 Lý do từ chối / Tạm ngưng / Chế tài gần nhất
-              </dt>
-              <dd className="mt-1 text-sm text-foreground">
+              </AlertTitle>
+              <AlertDescription className="text-foreground">
                 {org.rejectReason}
-              </dd>
-            </div>
+              </AlertDescription>
+            </Alert>
           ) : null}
         </dl>
       </section>

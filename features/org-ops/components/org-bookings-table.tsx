@@ -21,6 +21,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
@@ -362,19 +363,18 @@ export function OrgBookingsTable({
                   Không có kỹ thuật viên khả dụng khác.
                 </p>
               ) : (
-                <select
+                <NativeSelect
                   id="assign-tech-select"
                   value={selectedTechId}
                   onChange={(e) => setSelectedTechId(e.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm"
                   required
                 >
                   {technicians.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <NativeSelectOption key={t.id} value={t.id}>
                       {t.fullName} ({t.specialty})
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               )}
             </div>
             <div className="space-y-1.5">

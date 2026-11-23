@@ -15,6 +15,7 @@ import {
   focusFirstInvalidField,
 } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
@@ -374,17 +375,16 @@ export function OrgServicesPanel({
               />
             </FormField>
             <FormField label="Trạng thái hiển thị" htmlFor="svc-active">
-              <select
+              <NativeSelect
                 id="svc-active"
                 value={form.active ? "ACTIVE" : "INACTIVE"}
                 onChange={(e) =>
                   updateField("active", e.target.value === "ACTIVE")
                 }
-                className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
               >
-                <option value="ACTIVE">Đang hoạt động</option>
-                <option value="INACTIVE">Tạm ngưng</option>
-              </select>
+                <NativeSelectOption value="ACTIVE">Đang hoạt động</NativeSelectOption>
+                <NativeSelectOption value="INACTIVE">Tạm ngưng</NativeSelectOption>
+              </NativeSelect>
             </FormField>
           </div>
           <FormField

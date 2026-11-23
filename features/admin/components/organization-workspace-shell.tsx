@@ -18,18 +18,17 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   type Organization,
 } from "@/features/organizations/contracts/organization";
-import { organizationsApi } from "@/features/organizations/api";
+import { formatOrgClassification } from "@/features/admin/lib/admin-labels";
 import {
-  ORG_STATUS_LABELS,
-  formatOrgClassification,
-  formatShortCode,
-} from "@/features/admin/lib/admin-labels";
+  approveOrganizationAction,
+  reactivateOrganizationAction,
+} from "@/features/admin/lib/org-review-actions";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import {
   OrganizationActionDialogs,
   type OrganizationDialogState,
@@ -72,13 +71,16 @@ export function OrganizationWorkspaceShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [org, setOrg] = React.useState<Organization>(initialOrganization);
+  const [localOrg, setLocalOrg] = React.useState<{
+    baseUpdatedAt: string;
+    data: Organization;
+  } | null>(null);
+  const org =
+    localOrg && localOrg.baseUpdatedAt === initialOrganization.updatedAt
+      ? localOrg.data
+      : initialOrganization;
   const [dialog, setDialog] = React.useState<OrganizationDialogState>(null);
   const [busy, setBusy] = React.useState(false);
-
-  React.useEffect(() => {
-    setOrg(initialOrganization);
-  }, [initialOrganization]);
 
   const basePath = `/admin/organizations/${org.id}`;
 
@@ -156,22 +158,15 @@ export function OrganizationWorkspaceShell({
   usePortalBreadcrumb(breadcrumbTrail);
 
   function handleUpdated(updated: Organization) {
-    setOrg(updated);
+    setLocalOrg({ baseUpdatedAt: initialOrganization.updatedAt, data: updated });
     router.refresh();
   }
 
   async function handleQuickApprove() {
     setBusy(true);
     try {
-      const updated = await organizationsApi.review(org.id, {
-        status: "APPROVED",
-      });
-      handleUpdated(updated);
-      toast.success(
-        `Đã cập nhật trạng thái ${org.name} → ${ORG_STATUS_LABELS.APPROVED}`
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+      const updated = await approveOrganizationAction(org);
+      if (updated) handleUpdated(updated);
     } finally {
       setBusy(false);
     }
@@ -180,15 +175,8 @@ export function OrganizationWorkspaceShell({
   async function handleReactivate() {
     setBusy(true);
     try {
-      const updated = await organizationsApi.reactivate(org.id);
-      handleUpdated(updated);
-      toast.success(`Đã kích hoạt lại "${org.name}"`);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể kích hoạt lại tổ chức"
-      );
+      const updated = await reactivateOrganizationAction(org);
+      if (updated) handleUpdated(updated);
     } finally {
       setBusy(false);
     }
@@ -239,7 +227,6 @@ export function OrganizationWorkspaceShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org]);
 
-  const shortCode = formatShortCode(org.id);
   const classificationLabel = formatOrgClassification(
     ORGANIZATION_TYPE_LABELS[org.type] ?? org.type,
     org.legalEntityType
@@ -261,10 +248,6 @@ export function OrganizationWorkspaceShell({
             </div>
 
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-              <span className="font-mono text-[11px] text-muted-foreground">
-                #{shortCode}
-              </span>
-              <span aria-hidden="true">·</span>
               <span className="text-foreground/80">{classificationLabel}</span>
               {org.taxCode ? (
                 <>
@@ -374,19 +357,19 @@ export function OrganizationWorkspaceShell({
         <label htmlFor="org-workspace-section" className="sr-only">
           Chọn phân mục trong không gian tổ chức
         </label>
-        <select
+        <NativeSelect
           id="org-workspace-section"
           value={activeNavHref}
           onChange={(e) => router.push(e.target.value)}
-          className="h-10 w-full rounded-lg border border-input bg-surface px-3 text-sm font-medium text-foreground"
+          className="h-10 font-medium"
         >
           {navItems.map((item) => (
-            <option key={item.id} value={item.href}>
+            <NativeSelectOption key={item.id} value={item.href}>
               {item.label}
               {typeof item.count === "number" ? ` (${item.count})` : ""}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Desktop Two-Level Body: Secondary Vertical Nav + Main Content */}

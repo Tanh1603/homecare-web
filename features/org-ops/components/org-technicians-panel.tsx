@@ -15,6 +15,7 @@ import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
@@ -415,17 +416,16 @@ export function OrgTechniciansPanel({
                   />
                 </FormField>
                 <FormField label="Trạng thái nhận việc" htmlFor="tech-status">
-                  <select
+                  <NativeSelect
                     id="tech-status"
                     value={status}
                     onChange={(e) =>
                       setStatus(e.target.value as "ACTIVE" | "INACTIVE")
                     }
-                    className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
                   >
-                    <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-                    <option value="INACTIVE">Tạm ngưng (INACTIVE)</option>
-                  </select>
+                    <NativeSelectOption value="ACTIVE">Đang hoạt động (ACTIVE)</NativeSelectOption>
+                    <NativeSelectOption value="INACTIVE">Tạm ngưng (INACTIVE)</NativeSelectOption>
+                  </NativeSelect>
                 </FormField>
               </div>
             </FormSection>

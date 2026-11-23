@@ -42,11 +42,12 @@ export function OrganizationActionDialogs({
     React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
-  React.useEffect(() => {
+  const handleClose = React.useCallback(() => {
     setReason("");
     setAppealId("");
     setSafetyInterventionFlag(false);
-  }, [dialog?.kind, dialog?.org.id]);
+    onClose();
+  }, [onClose]);
 
   async function handleReject() {
     if (!dialog || dialog.kind !== "REJECT") return;
@@ -60,7 +61,7 @@ export function OrganizationActionDialogs({
       toast.success(
         `Đã cập nhật trạng thái ${dialog.org.name} → ${ORG_STATUS_LABELS.REJECTED}`
       );
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {
@@ -80,7 +81,7 @@ export function OrganizationActionDialogs({
       toast.success(
         `Đã cập nhật trạng thái ${dialog.org.name} → ${ORG_STATUS_LABELS.SUSPENDED}`
       );
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {
@@ -98,7 +99,7 @@ export function OrganizationActionDialogs({
       });
       onUpdated(updated);
       toast.success(`Đã cấm vĩnh viễn "${dialog.org.name}"`);
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {
@@ -130,7 +131,7 @@ export function OrganizationActionDialogs({
       } else {
         toast.success("Đã từ chối kháng cáo.");
       }
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {
@@ -149,7 +150,7 @@ export function OrganizationActionDialogs({
       toast.success(
         `Đã phê duyệt nâng cấp loại hình pháp lý cho "${dialog.org.name}"`
       );
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {

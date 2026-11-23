@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   formatOrgRoleLabel,
-  LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   updateOrganizationSchema,
@@ -15,12 +14,15 @@ import {
 } from "../contracts/organization";
 import { organizationsApi } from "../api";
 import { OrgEvidenceUploader } from "./org-evidence-uploader";
+import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
 import { StatusBadge } from "@/shared/ui/status-badge";
 
@@ -246,10 +248,10 @@ export function OrgProfileForm({
                 />
               </FormField>
               <FormField label="Tỉnh / Thành phố" htmlFor="org-city" required>
-                <Input
+                <ProvinceSelect
                   id="org-city"
                   value={city}
-                  onChange={(e) => setCity(e.target.value)}
+                  onChange={setCity}
                   disabled={!canEdit || saving}
                   required
                 />
@@ -328,7 +330,8 @@ export function OrgProfileForm({
               </Badge>
               {isOwner &&
               orgSnapshot &&
-              orgSnapshot.legalEntityType !== "COMPANY" &&
+              orgSnapshot.status === "APPROVED" &&
+              orgSnapshot.legalEntityType === "INDIVIDUAL" &&
               !orgSnapshot.pendingLegalEntityUpgrade ? (
                 <Button
                   type="button"
@@ -345,17 +348,23 @@ export function OrgProfileForm({
           </div>
 
           {orgSnapshot?.pendingLegalEntityUpgrade ? (
-            <div className="rounded-lg border border-warning/30 bg-warning-bg/60 px-3.5 py-2.5 text-xs text-foreground">
-              Đang có yêu cầu nâng cấp loại hình pháp lý sang{" "}
-              <strong>
-                {LEGAL_ENTITY_TYPE_LABELS[orgSnapshot.pendingLegalEntityUpgrade] ??
-                  orgSnapshot.pendingLegalEntityUpgrade}
-              </strong>{" "}
-              chờ quản trị viên phê duyệt.
-            </div>
+            <Alert variant="warning">
+              <AlertDescription className="text-xs">
+                Đang có yêu cầu nâng cấp loại hình pháp lý sang{" "}
+                <strong>
+                  {LEGAL_ENTITY_TYPE_LABELS[
+                    orgSnapshot.pendingLegalEntityUpgrade
+                  ] ?? orgSnapshot.pendingLegalEntityUpgrade}
+                </strong>{" "}
+                chờ quản trị viên phê duyệt.
+              </AlertDescription>
+            </Alert>
           ) : null}
 
-          <EvidenceDocumentsList value={orgSnapshot?.identityEvidenceRefs} />
+          <EvidenceDocumentsList
+            value={orgSnapshot?.identityEvidenceRefs}
+            organizationId={organizationId}
+          />
 
           {upgradeOpen && isOwner && orgSnapshot ? (
             <form
@@ -368,23 +377,20 @@ export function OrgProfileForm({
                   htmlFor="upgrade-legal-entity"
                   required
                 >
-                  <select
+                  <NativeSelect
                     id="upgrade-legal-entity"
                     value={targetLegalType}
                     disabled={upgrading}
                     onChange={(e) =>
                       setTargetLegalType(e.target.value as LegalEntityType)
                     }
-                    className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground"
                   >
-                    {LEGAL_ENTITY_TYPES.filter(
-                      (t) => t !== orgSnapshot.legalEntityType
-                    ).map((t) => (
-                      <option key={t} value={t}>
+                    {(["HOUSEHOLD_BUSINESS", "COMPANY"] as const).map((t) => (
+                      <NativeSelectOption key={t} value={t}>
                         {LEGAL_ENTITY_TYPE_LABELS[t]}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </FormField>
 
                 <FormField

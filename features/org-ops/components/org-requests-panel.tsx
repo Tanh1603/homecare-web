@@ -9,6 +9,7 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
@@ -289,7 +290,7 @@ export function OrgRequestsPanel({
             >
               <div className="sm:col-span-3">
                 <FormField label="Loại" htmlFor={`q-type-${idx}`}>
-                  <select
+                  <NativeSelect
                     id={`q-type-${idx}`}
                     value={line.type}
                     onChange={(e) => {
@@ -300,12 +301,12 @@ export function OrgRequestsPanel({
                       };
                       setLines(next);
                     }}
-                    className="h-9 w-full rounded-md border border-input bg-card px-2 text-xs"
+                    className="text-xs"
                   >
-                    <option value="LABOR">Nhân công</option>
-                    <option value="MATERIAL">Vật tư</option>
-                    <option value="OTHER">Khác</option>
-                  </select>
+                    <NativeSelectOption value="LABOR">Nhân công</NativeSelectOption>
+                    <NativeSelectOption value="MATERIAL">Vật tư</NativeSelectOption>
+                    <NativeSelectOption value="OTHER">Khác</NativeSelectOption>
+                  </NativeSelect>
                 </FormField>
               </div>
               <div className="sm:col-span-4">

@@ -15,50 +15,63 @@ export default async function AdminOrganizationServicesPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const q = sp.q?.trim() ?? "";
 
+  let pageData: Awaited<
+    ReturnType<typeof organizationWorkspaceServerApi.listServicesPage>
+  > | null = null;
+  let loadError: string | undefined;
+
   try {
-    const pageData = await organizationWorkspaceServerApi.listServicesPage(
-      orgId,
-      { page, size: 20, q }
-    );
-
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              Dịch vụ cung cấp của tổ chức
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Các gói dịch vụ riêng do tổ chức đăng ký cung cấp, tách biệt với
-              Danh mục dịch vụ toàn hệ thống.
-            </p>
-          </div>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            Tổng: <strong className="text-foreground">{pageData.pagination.totalItems}</strong>
-          </span>
-        </div>
-
-        <OrgWorkspaceServicesTable
-          organizationId={orgId}
-          items={pageData.items}
-          initialQuery={q}
-        />
-
-        <ServerPagination
-          page={pageData.pagination.page}
-          totalPages={pageData.pagination.totalPages}
-          totalItems={pageData.pagination.totalItems}
-          basePath={`/admin/organizations/${orgId}/services`}
-          searchParams={q ? { q } : undefined}
-        />
-      </div>
-    );
+    pageData = await organizationWorkspaceServerApi.listServicesPage(orgId, {
+      page,
+      size: 20,
+      q,
+    });
   } catch (err) {
+    loadError = err instanceof Error ? err.message : undefined;
+  }
+
+  if (!pageData) {
     return (
       <ErrorState
         title="Không thể tải danh sách dịch vụ cung cấp"
-        message={err instanceof Error ? err.message : undefined}
+        message={loadError}
       />
     );
   }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">
+            Dịch vụ cung cấp của tổ chức
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Các gói dịch vụ riêng do tổ chức đăng ký cung cấp, tách biệt với
+            Danh mục dịch vụ toàn hệ thống.
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          Tổng:{" "}
+          <strong className="text-foreground">
+            {pageData.pagination.totalItems}
+          </strong>
+        </span>
+      </div>
+
+      <OrgWorkspaceServicesTable
+        organizationId={orgId}
+        items={pageData.items}
+        initialQuery={q}
+      />
+
+      <ServerPagination
+        page={pageData.pagination.page}
+        totalPages={pageData.pagination.totalPages}
+        totalItems={pageData.pagination.totalItems}
+        basePath={`/admin/organizations/${orgId}/services`}
+        searchParams={q ? { q } : undefined}
+      />
+    </div>
+  );
 }

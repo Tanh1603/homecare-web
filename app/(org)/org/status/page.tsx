@@ -5,6 +5,7 @@ import { requireOrgContext } from "@/shared/auth/guards";
 import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
 import { OrgAppealForm } from "@/features/organizations/components/org-appeal-form";
 import { OrgResubmitForm } from "@/features/organizations/components/org-resubmit-form";
+import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
@@ -59,9 +60,9 @@ export default async function OrgStatusPage() {
                 truy cập các chức năng vận hành.
               </p>
               {reason ? (
-                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-                  Lý do: {reason}
-                </div>
+                <Alert variant="destructive">
+                  <AlertDescription>Lý do: {reason}</AlertDescription>
+                </Alert>
               ) : null}
               {isRejected && org.memberRole === "ORG_OWNER" && orgDetail ? (
                 <OrgResubmitForm organization={orgDetail} />

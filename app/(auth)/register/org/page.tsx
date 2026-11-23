@@ -11,6 +11,7 @@ import { ArrowLeft, CheckCircle2, Info, ShieldCheck } from "lucide-react";
 import {
   LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
+  ORGANIZATION_TYPES,
   V01_REGISTERABLE_ORGANIZATION_TYPES,
   ORGANIZATION_TYPE_LABELS,
   registerOrganizationSchema,
@@ -19,9 +20,13 @@ import {
 import { organizationsApi } from "@/features/organizations/api";
 import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import { GatewayApiError } from "@/shared/api/api-envelope";
+import { createSupabaseBrowserClient } from "@/shared/lib/supabase/client";
+import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { FormField } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
 import { ThemeToggle } from "@/shared/ui/theme-toggle";
 
@@ -29,6 +34,35 @@ export default function RegisterOrganizationPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [requiresLogin, setRequiresLogin] = React.useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = React.useState<string | null>(
+    null
+  );
+  const [authChecked, setAuthChecked] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function checkAuth() {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!cancelled) {
+          setCurrentUserEmail(user?.email ?? null);
+          setRequiresLogin(!user);
+          setAuthChecked(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setAuthChecked(true);
+        }
+      }
+    }
+    void checkAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const form = useForm<RegisterOrganizationInput>({
     resolver: zodResolver(registerOrganizationSchema),
@@ -38,7 +72,7 @@ export default function RegisterOrganizationPage() {
       legalEntityType: "COMPANY",
       taxCode: "",
       phone: "",
-      city: "TP. Hồ Chí Minh",
+      city: "Thành phố Hồ Chí Minh",
       address: "",
       description: "",
       identityEvidenceRefs: "",
@@ -46,6 +80,7 @@ export default function RegisterOrganizationPage() {
   });
 
   const legalEntityType = form.watch("legalEntityType");
+  const cityValue = form.watch("city");
   const identityEvidenceRefs = form.watch("identityEvidenceRefs");
 
   async function onSubmit(values: RegisterOrganizationInput) {
@@ -111,23 +146,42 @@ export default function RegisterOrganizationPage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
 
         {requiresLogin ? (
-          <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning-bg/70 p-3.5 text-xs text-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-            <div className="space-y-1">
-              <p className="font-semibold">
-                Cần đăng nhập để định danh chủ sở hữu hồ sơ
-              </p>
-              <p className="text-muted-foreground">
-                Vui lòng{" "}
-                <Link
-                  href="/login?next=/register/org"
-                  className="font-semibold text-primary underline underline-offset-2"
+          <Alert variant="warning" className="mb-6">
+            <Info />
+            <div className="col-start-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-0.5">
+                <AlertTitle className="text-xs font-semibold">
+                  Bước 1: Tạo tài khoản hoặc đăng nhập chủ sở hữu hồ sơ
+                </AlertTitle>
+                <AlertDescription className="text-xs">
+                  Hệ thống cần tài khoản để định danh chủ sở hữu khi tải tài
+                  liệu và quản trị tổ chức sau khi duyệt.
+                </AlertDescription>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button size="sm" asChild className="h-8 text-xs">
+                  <Link href="/login?mode=signup&next=/register/org">
+                    Tạo tài khoản mới
+                  </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="h-8 text-xs bg-surface"
                 >
-                  đăng nhập tại đây
-                </Link>
-                rồi gửi lại biểu mẫu.
-              </p>
+                  <Link href="/login?next=/register/org">Đăng nhập</Link>
+                </Button>
+              </div>
             </div>
+          </Alert>
+        ) : authChecked && currentUserEmail ? (
+          <div className="mb-6 flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 text-xs text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+            <span>
+              Đang nộp hồ sơ với tài khoản chủ sở hữu:{" "}
+              <strong className="text-foreground">{currentUserEmail}</strong>
+            </span>
           </div>
         ) : null}
 
@@ -167,20 +221,30 @@ export default function RegisterOrganizationPage() {
                 label="Lĩnh vực hoạt động"
                 htmlFor="type"
                 required
+                hint="Hiện hỗ trợ đăng ký đối tác cung cấp dịch vụ."
                 error={form.formState.errors.type?.message}
               >
-                <select
+                <NativeSelect
                   id="type"
                   aria-invalid={Boolean(form.formState.errors.type) || undefined}
                   {...form.register("type")}
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  {V01_REGISTERABLE_ORGANIZATION_TYPES.map((orgType) => (
-                    <option key={orgType} value={orgType}>
-                      {ORGANIZATION_TYPE_LABELS[orgType]}
-                    </option>
-                  ))}
-                </select>
+                  {ORGANIZATION_TYPES.map((orgType) => {
+                    const enabled = (
+                      V01_REGISTERABLE_ORGANIZATION_TYPES as readonly string[]
+                    ).includes(orgType);
+                    return (
+                      <NativeSelectOption
+                        key={orgType}
+                        value={orgType}
+                        disabled={!enabled}
+                      >
+                        {ORGANIZATION_TYPE_LABELS[orgType]}
+                        {!enabled ? " (Sắp ra mắt)" : ""}
+                      </NativeSelectOption>
+                    );
+                  })}
+                </NativeSelect>
               </FormField>
 
               <FormField
@@ -189,20 +253,19 @@ export default function RegisterOrganizationPage() {
                 required
                 error={form.formState.errors.legalEntityType?.message}
               >
-                <select
+                <NativeSelect
                   id="legalEntityType"
                   aria-invalid={
                     Boolean(form.formState.errors.legalEntityType) || undefined
                   }
                   {...form.register("legalEntityType")}
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {LEGAL_ENTITY_TYPES.map((entityType) => (
-                    <option key={entityType} value={entityType}>
+                    <NativeSelectOption key={entityType} value={entityType}>
                       {LEGAL_ENTITY_TYPE_LABELS[entityType]}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </FormField>
 
               <FormField
@@ -238,11 +301,17 @@ export default function RegisterOrganizationPage() {
                 required
                 error={form.formState.errors.city?.message}
               >
-                <Input
+                <ProvinceSelect
                   id="city"
+                  value={cityValue}
+                  disabled={submitting}
                   aria-invalid={Boolean(form.formState.errors.city) || undefined}
-                  placeholder="TP. Hồ Chí Minh"
-                  {...form.register("city")}
+                  onChange={(next) =>
+                    form.setValue("city", next, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
                 />
               </FormField>
 

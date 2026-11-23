@@ -17,6 +17,8 @@ import { OrgEvidenceUploader } from "@/features/organizations/components/org-evi
 import { Button } from "@/shared/ui/button";
 import { FormField } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
 
 export function OrgResubmitForm({
@@ -42,6 +44,7 @@ export function OrgResubmitForm({
   });
 
   const evidenceValue = form.watch("identityEvidenceRefs");
+  const cityValue = form.watch("city");
   const legalEntityType = form.watch("legalEntityType");
 
   async function onSubmit(values: ResubmitOrganizationInput) {
@@ -100,18 +103,17 @@ export function OrgResubmitForm({
           required
           error={form.formState.errors.legalEntityType?.message}
         >
-          <select
+          <NativeSelect
             id="resubmit-legal-entity"
             disabled={submitting}
             {...form.register("legalEntityType")}
-            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {LEGAL_ENTITY_TYPES.map((entityType) => (
-              <option key={entityType} value={entityType}>
+              <NativeSelectOption key={entityType} value={entityType}>
                 {LEGAL_ENTITY_TYPE_LABELS[entityType]}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
 
         <FormField
@@ -145,10 +147,16 @@ export function OrgResubmitForm({
           required
           error={form.formState.errors.city?.message}
         >
-          <Input
+          <ProvinceSelect
             id="resubmit-city"
+            value={cityValue}
             disabled={submitting}
-            {...form.register("city")}
+            onChange={(next) =>
+              form.setValue("city", next, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
           />
         </FormField>
 

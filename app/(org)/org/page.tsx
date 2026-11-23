@@ -24,9 +24,14 @@ export default async function OrgDashboardPage() {
   }
 
   const orgId = ctx.activeOrganization.organizationId;
+  const supportsCommerce =
+    ctx.activeOrganization.type === "COMMERCE" ||
+    ctx.activeOrganization.type === "BOTH";
   const [bookings, orders, technicians, warranties] = await Promise.all([
     orgOpsApi.listBookings(orgId),
-    orgOpsApi.listOrders(orgId),
+    supportsCommerce
+      ? orgOpsApi.listOrders(orgId).catch(() => [])
+      : Promise.resolve([]),
     orgOpsApi.listTechnicians(orgId),
     orgOpsApi.listWarranties(orgId),
   ]);
