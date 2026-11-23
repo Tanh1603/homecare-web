@@ -4,17 +4,26 @@ import {
   type ApiResponse,
 } from "@/shared/api/api-envelope";
 import {
+  requestPresignedUpload,
+  uploadFileViaPresignedUrl,
+  type PresignedUploadResponse,
+} from "@/shared/api/media-upload";
+import {
   normalizeMembership,
   normalizeOrganization,
   type AddOrganizationMemberInput,
   type Organization,
+  type OrganizationEvidenceRef,
   type OrganizationMember,
   type OrganizationMemberRole,
   type OrganizationMembership,
   type RegisterOrganizationInput,
+  type ResubmitOrganizationInput,
   type ReviewOrganizationInput,
   type UpdateOrganizationInput,
 } from "../contracts/organization";
+
+export type PresignedEvidenceUpload = PresignedUploadResponse;
 
 export const organizationsHttpAdapter = {
   async listAll(page = 1, size = 100): Promise<Organization[]> {
@@ -52,6 +61,7 @@ export const organizationsHttpAdapter = {
       ...input,
       taxCode: input.taxCode?.trim() || undefined,
       description: input.description?.trim() || undefined,
+      identityEvidenceRefs: input.identityEvidenceRefs.trim(),
     };
     const res = await fetch("/api/gateway/organizations", {
       method: "POST",
@@ -60,6 +70,92 @@ export const organizationsHttpAdapter = {
     });
     const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
     return normalizeOrganization(unwrapApiResponse(json));
+  },
+
+  async resubmit(
+    organizationId: string,
+    input: ResubmitOrganizationInput,
+    version?: number
+  ): Promise<Organization> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-homecare-scope": "personal",
+    };
+    if (typeof version === "number") {
+      headers["If-Match"] = `W/"${version}"`;
+    }
+    const payload = {
+      ...input,
+      taxCode: input.taxCode?.trim() || undefined,
+      description: input.description?.trim() || undefined,
+      identityEvidenceRefs: input.identityEvidenceRefs.trim(),
+    };
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/resubmit`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(payload),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
+    return normalizeOrganization(unwrapApiResponse(json));
+  },
+
+  async upgradeLegalEntity(
+    organizationId: string,
+    input: {
+      targetLegalEntityType: "COMPANY" | "HOUSEHOLD_BUSINESS" | "INDIVIDUAL";
+      taxCode?: string;
+      identityEvidenceRefs?: string;
+    },
+    version?: number
+  ): Promise<Organization> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-homecare-scope": "personal",
+    };
+    if (typeof version === "number") {
+      headers["If-Match"] = `W/"${version}"`;
+    }
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/upgrade-legal-entity`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          targetLegalEntityType: input.targetLegalEntityType,
+          taxCode: input.taxCode?.trim() || undefined,
+          identityEvidenceRefs: input.identityEvidenceRefs?.trim() || undefined,
+        }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
+    return normalizeOrganization(unwrapApiResponse(json));
+  },
+
+  async presignEvidenceUpload(input: {
+    fileName: string;
+    contentType: string;
+    documentType?: string;
+  }): Promise<PresignedEvidenceUpload> {
+    return requestPresignedUpload(
+      "/api/gateway/organizations/evidence/presign",
+      input,
+      "personal"
+    );
+  },
+
+  async uploadEvidenceFile(
+    file: File,
+    documentType = "LEGAL_DOCUMENT"
+  ): Promise<OrganizationEvidenceRef> {
+    return uploadFileViaPresignedUrl({
+      presignUrl: "/api/gateway/organizations/evidence/presign",
+      file,
+      documentType,
+      scope: "personal",
+    });
   },
 
   async review(

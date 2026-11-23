@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   formatOrgRoleLabel,
+  LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
   updateOrganizationSchema,
+  type LegalEntityType,
   type Organization,
   type OrganizationMemberRole,
 } from "../contracts/organization";
 import { organizationsApi } from "../api";
+import { OrgEvidenceUploader } from "./org-evidence-uploader";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
@@ -39,6 +43,25 @@ export function OrgProfileForm({
     currentUserRole === "ORG_ADMIN" ||
     currentUserRole === "OWNER" ||
     currentUserRole === "MANAGER";
+  const isOwner =
+    currentUserRole === "ORG_OWNER" || currentUserRole === "OWNER";
+
+  const [orgSnapshot, setOrgSnapshot] = React.useState<Organization | null>(
+    initialOrganization
+  );
+  const [upgradeOpen, setUpgradeOpen] = React.useState(false);
+  const [targetLegalType, setTargetLegalType] = React.useState<LegalEntityType>(
+    initialOrganization?.legalEntityType === "INDIVIDUAL"
+      ? "HOUSEHOLD_BUSINESS"
+      : "COMPANY"
+  );
+  const [upgradeTaxCode, setUpgradeTaxCode] = React.useState(
+    initialOrganization?.taxCode ?? ""
+  );
+  const [upgradeEvidenceRefs, setUpgradeEvidenceRefs] = React.useState(
+    initialOrganization?.identityEvidenceRefs ?? ""
+  );
+  const [upgrading, setUpgrading] = React.useState(false);
 
   const [savedValues, setSavedValues] = React.useState({
     name: initialOrganization?.name ?? organizationName,
@@ -113,6 +136,39 @@ export function OrgProfileForm({
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleUpgradeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isOwner || !orgSnapshot) return;
+    if (!upgradeEvidenceRefs.trim()) {
+      toast.error("Vui lòng tải lên tài liệu chứng minh pháp lý mới.");
+      return;
+    }
+    setUpgrading(true);
+    try {
+      const updated = await organizationsApi.upgradeLegalEntity(
+        organizationId,
+        {
+          targetLegalEntityType: targetLegalType,
+          taxCode: upgradeTaxCode,
+          identityEvidenceRefs: upgradeEvidenceRefs,
+        },
+        orgSnapshot.version
+      );
+      setOrgSnapshot(updated);
+      setUpgradeOpen(false);
+      toast.success("Đã gửi yêu cầu nâng cấp loại hình pháp lý. Chờ Admin phê duyệt.");
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể gửi yêu cầu nâng cấp pháp nhân"
+      );
+    } finally {
+      setUpgrading(false);
     }
   }
 
@@ -251,6 +307,130 @@ export function OrgProfileForm({
             </p>
           )}
         </form>
+
+        <div className="border-t border-border pt-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                Tài liệu chứng minh pháp lý
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Tài liệu định danh và giấy phép đã nộp cho HomeCare Admin.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant={orgSnapshot?.identityVerified ? "success" : "secondary"}
+              >
+                {orgSnapshot?.identityVerified
+                  ? "Đã xác minh định danh"
+                  : "Chưa xác minh"}
+              </Badge>
+              {isOwner &&
+              orgSnapshot &&
+              orgSnapshot.legalEntityType !== "COMPANY" &&
+              !orgSnapshot.pendingLegalEntityUpgrade ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setUpgradeOpen((v) => !v)}
+                >
+                  {upgradeOpen
+                    ? "Đóng biểu mẫu nâng cấp"
+                    : "Yêu cầu nâng cấp pháp nhân"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {orgSnapshot?.pendingLegalEntityUpgrade ? (
+            <div className="rounded-lg border border-warning/30 bg-warning-bg/60 px-3.5 py-2.5 text-xs text-foreground">
+              Đang có yêu cầu nâng cấp loại hình pháp lý sang{" "}
+              <strong>
+                {LEGAL_ENTITY_TYPE_LABELS[orgSnapshot.pendingLegalEntityUpgrade] ??
+                  orgSnapshot.pendingLegalEntityUpgrade}
+              </strong>{" "}
+              chờ quản trị viên phê duyệt.
+            </div>
+          ) : null}
+
+          <EvidenceDocumentsList value={orgSnapshot?.identityEvidenceRefs} />
+
+          {upgradeOpen && isOwner && orgSnapshot ? (
+            <form
+              onSubmit={handleUpgradeSubmit}
+              className="space-y-4 rounded-xl border border-border bg-surface-secondary/60 p-4"
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField
+                  label="Loại hình pháp lý muốn nâng cấp"
+                  htmlFor="upgrade-legal-entity"
+                  required
+                >
+                  <select
+                    id="upgrade-legal-entity"
+                    value={targetLegalType}
+                    disabled={upgrading}
+                    onChange={(e) =>
+                      setTargetLegalType(e.target.value as LegalEntityType)
+                    }
+                    className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground"
+                  >
+                    {LEGAL_ENTITY_TYPES.filter(
+                      (t) => t !== orgSnapshot.legalEntityType
+                    ).map((t) => (
+                      <option key={t} value={t}>
+                        {LEGAL_ENTITY_TYPE_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField
+                  label="Mã số thuế mới (nếu có)"
+                  htmlFor="upgrade-tax-code"
+                >
+                  <Input
+                    id="upgrade-tax-code"
+                    value={upgradeTaxCode}
+                    disabled={upgrading}
+                    onChange={(e) => setUpgradeTaxCode(e.target.value)}
+                    placeholder="VD: 0312345678"
+                  />
+                </FormField>
+              </div>
+
+              <FormField
+                label="Tài liệu chứng minh pháp lý mới"
+                htmlFor="upgrade-evidence"
+                required
+              >
+                <OrgEvidenceUploader
+                  legalEntityType={targetLegalType}
+                  value={upgradeEvidenceRefs}
+                  onChange={setUpgradeEvidenceRefs}
+                  disabled={upgrading}
+                />
+              </FormField>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={upgrading}
+                  onClick={() => setUpgradeOpen(false)}
+                >
+                  Hủy
+                </Button>
+                <Button type="submit" size="sm" loading={upgrading}>
+                  {upgrading ? "Đang gửi..." : "Gửi yêu cầu nâng cấp"}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

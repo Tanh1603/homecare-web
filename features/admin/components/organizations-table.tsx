@@ -36,6 +36,7 @@ import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { cn, formatDateTime } from "@/shared/lib/utils";
 
@@ -411,6 +412,12 @@ export function OrganizationsTable({
               <p className="font-medium whitespace-pre-wrap">
                 {detailTarget.description || "—"}
               </p>
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <span className="text-xs text-muted-foreground">
+                Tài liệu chứng minh pháp lý
+              </span>
+              <EvidenceDocumentsList value={detailTarget.identityEvidenceRefs} />
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">

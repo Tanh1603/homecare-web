@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Clock, XCircle } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
+import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
 import { OrgAppealForm } from "@/features/organizations/components/org-appeal-form";
+import { OrgResubmitForm } from "@/features/organizations/components/org-resubmit-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
@@ -18,6 +20,10 @@ export default async function OrgStatusPage() {
   const isPending = org.organizationStatus === "PENDING";
   const isRejected = org.organizationStatus === "REJECTED";
   const reason = org.rejectReason ?? org.rejectionReason;
+  const orgDetail =
+    isRejected && org.memberRole === "ORG_OWNER"
+      ? await organizationsServerApi.getDetail(org.organizationId).catch(() => null)
+      : null;
 
   return (
     <div className="mx-auto max-w-2xl py-8">
@@ -56,6 +62,9 @@ export default async function OrgStatusPage() {
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
                   Lý do: {reason}
                 </div>
+              ) : null}
+              {isRejected && org.memberRole === "ORG_OWNER" && orgDetail ? (
+                <OrgResubmitForm organization={orgDetail} />
               ) : null}
               {(org.organizationStatus === "SUSPENDED" ||
                 org.organizationStatus === "BANNED") &&

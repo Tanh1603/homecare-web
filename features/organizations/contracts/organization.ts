@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { UploadedMediaRef } from "../../../shared/api/media-upload";
 
 export const ORGANIZATION_STATUSES = [
   "PENDING",
@@ -66,6 +67,7 @@ export interface Organization {
   rejectionReason?: string | null;
   resubmitCount?: number;
   identityVerified?: boolean;
+  identityEvidenceRefs?: string | null;
   pendingLegalEntityUpgrade?: LegalEntityType | null;
   taxCode?: string | null;
   phone: string;
@@ -139,6 +141,8 @@ export function normalizeOrganization(
       typeof raw.identityVerified === "boolean"
         ? raw.identityVerified
         : undefined,
+    identityEvidenceRefs:
+      (raw.identityEvidenceRefs as string | null | undefined) ?? null,
     pendingLegalEntityUpgrade: toLegalEntityType(raw.pendingLegalEntityUpgrade),
     taxCode: (raw.taxCode as string | null | undefined) ?? null,
     phone: String(raw.phone ?? ""),
@@ -180,6 +184,14 @@ export function normalizeMembership(
   };
 }
 
+export type OrganizationEvidenceRef = UploadedMediaRef;
+
+export const LEGAL_ENTITY_EVIDENCE_GUIDE: Record<LegalEntityType, string> = {
+  COMPANY: "Giấy chứng nhận đăng ký doanh nghiệp / Mã số thuế (PDF hoặc ảnh).",
+  HOUSEHOLD_BUSINESS: "Giấy đăng ký hộ kinh doanh và CCCD chủ hộ (PDF hoặc ảnh).",
+  INDIVIDUAL: "CCCD/CMND hoặc chứng chỉ hành nghề cá nhân (PDF hoặc ảnh).",
+};
+
 export const registerOrganizationSchema = z.object({
   name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
   type: z.enum(ORGANIZATION_TYPES, {
@@ -200,10 +212,22 @@ export const registerOrganizationSchema = z.object({
   city: z.string().trim().min(2, "Vui lòng nhập tỉnh/thành phố"),
   address: z.string().trim().min(5, "Địa chỉ tối thiểu 5 ký tự"),
   description: z.string().trim().optional(),
+  identityEvidenceRefs: z
+    .string()
+    .trim()
+    .min(1, "Vui lòng tải lên ít nhất 1 tài liệu chứng minh pháp lý"),
 });
 
 export type RegisterOrganizationInput = z.infer<
   typeof registerOrganizationSchema
+>;
+
+export const resubmitOrganizationSchema = registerOrganizationSchema.omit({
+  type: true,
+});
+
+export type ResubmitOrganizationInput = z.infer<
+  typeof resubmitOrganizationSchema
 >;
 
 export const reviewOrganizationSchema = z.object({

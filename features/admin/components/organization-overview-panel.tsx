@@ -28,6 +28,7 @@ import {
 } from "@/features/admin/components/organization-action-dialogs";
 import { Button } from "@/shared/ui/button";
 import { StatusBadge } from "@/shared/ui/status-badge";
+import { parseUploadedMediaRefs } from "@/shared/api/media-upload";
 import { cn, formatDateTime } from "@/shared/lib/utils";
 
 interface OperationalAlert {
@@ -215,6 +216,7 @@ export function OrganizationOverviewPanel({
     });
   }
 
+  const uploadedDocsCount = parseUploadedMediaRefs(org.identityEvidenceRefs).length;
   const partialErrors = [
     summary.technicians.error,
     summary.services.error,
@@ -434,6 +436,28 @@ export function OrganizationOverviewPanel({
               {typeof org.resubmitCount === "number" && org.resubmitCount > 0
                 ? ` · Đã nộp lại ${org.resubmitCount} lần`
                 : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Tài liệu pháp lý</dt>
+            <dd className="mt-0.5 font-medium text-foreground">
+              {uploadedDocsCount > 0 ? (
+                <Link
+                  href={`${basePath}/profile`}
+                  className="text-primary hover:underline underline-offset-2 tabular-nums"
+                >
+                  {uploadedDocsCount} tài liệu đã nộp
+                </Link>
+              ) : org.identityEvidenceRefs?.trim() ? (
+                <Link
+                  href={`${basePath}/profile`}
+                  className="text-primary hover:underline underline-offset-2"
+                >
+                  Đã đính kèm tài liệu
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">Chưa có tài liệu</span>
+              )}
             </dd>
           </div>
           <div>

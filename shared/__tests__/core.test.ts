@@ -173,6 +173,8 @@ test("registerOrganizationSchema validates separated capability type, legalEntit
     city: "Đà Nẵng",
     address: "15 Nguyễn Văn Linh, Hải Châu",
     description: "Chuyên điều hòa & máy giặt",
+    identityEvidenceRefs:
+      '[{"documentType":"HOUSEHOLD_BUSINESS","fileName":"hkd.pdf","objectKey":"org/hkd.pdf","bucket":"evidence"}]',
   });
   assert.equal(valid.success, true);
 

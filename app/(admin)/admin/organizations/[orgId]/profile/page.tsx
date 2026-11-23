@@ -6,6 +6,7 @@ import { organizationWorkspaceServerApi } from "@/features/admin/api/organizatio
 import { formatShortCode } from "@/features/admin/lib/admin-labels";
 import { Badge } from "@/shared/ui/badge";
 import { ErrorState } from "@/shared/ui/error-state";
+import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { formatDateTime } from "@/shared/lib/utils";
 
@@ -104,6 +105,21 @@ export default async function AdminOrganizationProfilePage({
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-foreground">
+            Tài liệu chứng minh pháp lý
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Tài liệu đính kèm khi đăng ký, nộp lại hồ sơ hoặc yêu cầu nâng cấp
+            loại hình pháp lý.
+          </p>
+        </div>
+        <div className="p-5">
+          <EvidenceDocumentsList value={org.identityEvidenceRefs} />
+        </div>
       </section>
 
       <section className="rounded-xl border border-border bg-surface">
