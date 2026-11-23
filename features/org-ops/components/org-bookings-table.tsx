@@ -124,6 +124,38 @@ export function OrgBookingsTable({
       toast.error(
         err instanceof Error ? err.message : "Không thể điều phối kỹ thuật viên"
       );
+      try {
+        const latest = await orgOpsHttpApi.getBooking(
+          organizationId,
+          assignTarget.id
+        );
+        setAssignTarget((prev) =>
+          prev && prev.id === latest.id
+            ? {
+                ...prev,
+                status: latest.status,
+                technicianId: latest.assignedTechnicianId ?? prev.technicianId,
+                technicianName: latest.assignedTechnicianName ?? null,
+                version: latest.version ?? prev.version,
+              }
+            : prev
+        );
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === latest.id
+              ? {
+                  ...b,
+                  status: latest.status,
+                  technicianId: latest.assignedTechnicianId ?? b.technicianId,
+                  technicianName: latest.assignedTechnicianName ?? null,
+                  version: latest.version ?? b.version,
+                }
+              : b
+          )
+        );
+      } catch {
+        // Ignore refresh error; user already saw the assign failure toast.
+      }
     } finally {
       setBusyId(null);
     }
