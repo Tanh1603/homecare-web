@@ -1,15 +1,18 @@
 import { z } from "zod";
+import type { UploadedMediaRef } from "../../../shared/api/media-upload";
 
 export const ORGANIZATION_STATUSES = [
   "PENDING",
   "APPROVED",
   "REJECTED",
   "SUSPENDED",
+  "BANNED",
 ] as const;
 
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 
 export const ORGANIZATION_TYPES = ["SERVICE", "COMMERCE", "BOTH"] as const;
+export const V01_REGISTERABLE_ORGANIZATION_TYPES = ["SERVICE"] as const;
 
 export type OrganizationType = (typeof ORGANIZATION_TYPES)[number];
 
@@ -62,6 +65,10 @@ export interface Organization {
   status: OrganizationStatus;
   rejectReason?: string | null;
   rejectionReason?: string | null;
+  resubmitCount?: number;
+  identityVerified?: boolean;
+  identityEvidenceRefs?: string | null;
+  pendingLegalEntityUpgrade?: LegalEntityType | null;
   taxCode?: string | null;
   phone: string;
   city: string;
@@ -128,6 +135,15 @@ export function normalizeOrganization(
     status: (raw.status as OrganizationStatus) || "PENDING",
     rejectReason,
     rejectionReason: rejectReason,
+    resubmitCount:
+      typeof raw.resubmitCount === "number" ? raw.resubmitCount : undefined,
+    identityVerified:
+      typeof raw.identityVerified === "boolean"
+        ? raw.identityVerified
+        : undefined,
+    identityEvidenceRefs:
+      (raw.identityEvidenceRefs as string | null | undefined) ?? null,
+    pendingLegalEntityUpgrade: toLegalEntityType(raw.pendingLegalEntityUpgrade),
     taxCode: (raw.taxCode as string | null | undefined) ?? null,
     phone: String(raw.phone ?? ""),
     city: String(raw.city ?? ""),
@@ -168,7 +184,88 @@ export function normalizeMembership(
   };
 }
 
-export const registerOrganizationSchema = z.object({
+export type OrganizationEvidenceRef = UploadedMediaRef;
+
+export const LEGAL_ENTITY_EVIDENCE_GUIDE: Record<LegalEntityType, string> = {
+  COMPANY: "Giấy chứng nhận đăng ký doanh nghiệp / Mã số thuế (PDF hoặc ảnh).",
+  HOUSEHOLD_BUSINESS: "Giấy đăng ký hộ kinh doanh và CCCD chủ hộ (PDF hoặc ảnh).",
+  INDIVIDUAL: "CCCD/CMND hoặc chứng chỉ hành nghề cá nhân (PDF hoặc ảnh).",
+};
+
+export const TAX_CODE_FIELD_CONFIG: Record<
+  LegalEntityType,
+  {
+    label: string;
+    required: boolean;
+    placeholder: string;
+    hint: string;
+  }
+> = {
+  COMPANY: {
+    label: "Mã số thuế doanh nghiệp",
+    required: true,
+    placeholder: "0109283746 (10 chữ số)",
+    hint: "Bắt buộc 10 chữ số theo đăng ký doanh nghiệp.",
+  },
+  HOUSEHOLD_BUSINESS: {
+    label: "Số định danh cá nhân (chủ hộ)",
+    required: true,
+    placeholder: "001090012345 (12 chữ số)",
+    hint: "Từ 01/07/2025, hộ kinh doanh dùng số định danh cá nhân 12 chữ số của người đại diện.",
+  },
+  INDIVIDUAL: {
+    label: "Mã số thuế / Số định danh cá nhân",
+    required: false,
+    placeholder: "Tùy chọn (10 hoặc 12 chữ số)",
+    hint: "Tùy chọn với cá nhân; nếu nhập phải gồm 10 hoặc 12 chữ số.",
+  },
+};
+
+export const VN_PHONE_REGEX = /^(0|\+84)(2\d{8,9}|[35789]\d{8})$/;
+export const COMPANY_TAX_CODE_REGEX = /^\d{10}$/;
+export const HOUSEHOLD_PERSONAL_ID_REGEX = /^\d{12}$/;
+export const INDIVIDUAL_TAX_OR_ID_REGEX = /^(\d{10}|\d{12})$/;
+
+export function normalizeVietnamesePhone(raw: string): string {
+  return raw.replace(/[\s.-]+/g, "");
+}
+
+function validateTaxCodeByEntityType(
+  legalEntityType: LegalEntityType,
+  rawTaxCode: string | undefined,
+  ctx: z.RefinementCtx
+) {
+  const taxCode = (rawTaxCode ?? "").trim();
+  if (legalEntityType === "COMPANY") {
+    if (!COMPANY_TAX_CODE_REGEX.test(taxCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["taxCode"],
+        message: "Doanh nghiệp bắt buộc nhập mã số thuế gồm 10 chữ số",
+      });
+    }
+    return;
+  }
+  if (legalEntityType === "HOUSEHOLD_BUSINESS") {
+    if (!HOUSEHOLD_PERSONAL_ID_REGEX.test(taxCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["taxCode"],
+        message: "Hộ kinh doanh bắt buộc nhập số định danh cá nhân gồm 12 chữ số",
+      });
+    }
+    return;
+  }
+  if (taxCode.length > 0 && !INDIVIDUAL_TAX_OR_ID_REGEX.test(taxCode)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["taxCode"],
+      message: "Nếu nhập, mã số thuế / số định danh cá nhân phải gồm 10 hoặc 12 chữ số",
+    });
+  }
+}
+
+const baseOrganizationObjectSchema = z.object({
   name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
   type: z.enum(ORGANIZATION_TYPES, {
     error: "Vui lòng chọn lĩnh vực hoạt động",
@@ -176,22 +273,40 @@ export const registerOrganizationSchema = z.object({
   legalEntityType: z.enum(LEGAL_ENTITY_TYPES, {
     error: "Vui lòng chọn loại hình pháp lý",
   }),
-  taxCode: z
+  taxCode: z.string().trim().optional(),
+  phone: z
     .string()
     .trim()
+    .transform(normalizeVietnamesePhone)
     .refine(
-      (val) => val.length === 0 || val.length >= 10,
-      "Mã số thuế tối thiểu 10 ký tự"
-    )
-    .optional(),
-  phone: z.string().trim().min(9, "Số điện thoại không hợp lệ"),
+      (val) => VN_PHONE_REGEX.test(val),
+      "Số điện thoại Việt Nam không hợp lệ (VD: 0901234567 hoặc 02838221234)"
+    ),
   city: z.string().trim().min(2, "Vui lòng nhập tỉnh/thành phố"),
   address: z.string().trim().min(5, "Địa chỉ tối thiểu 5 ký tự"),
   description: z.string().trim().optional(),
+  identityEvidenceRefs: z
+    .string()
+    .trim()
+    .min(1, "Vui lòng tải lên ít nhất 1 tài liệu chứng minh pháp lý"),
 });
+
+export const registerOrganizationSchema = baseOrganizationObjectSchema.superRefine(
+  (data, ctx) => validateTaxCodeByEntityType(data.legalEntityType, data.taxCode, ctx)
+);
 
 export type RegisterOrganizationInput = z.infer<
   typeof registerOrganizationSchema
+>;
+
+export const resubmitOrganizationSchema = baseOrganizationObjectSchema
+  .omit({ type: true })
+  .superRefine((data, ctx) =>
+    validateTaxCodeByEntityType(data.legalEntityType, data.taxCode, ctx)
+  );
+
+export type ResubmitOrganizationInput = z.infer<
+  typeof resubmitOrganizationSchema
 >;
 
 export const reviewOrganizationSchema = z.object({
@@ -212,7 +327,14 @@ export type AddOrganizationMemberInput = z.infer<
 
 export const updateOrganizationSchema = z.object({
   name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
-  phone: z.string().trim().min(9, "Số điện thoại không hợp lệ"),
+  phone: z
+    .string()
+    .trim()
+    .transform((value) => normalizeVietnamesePhone(value))
+    .refine(
+      (value) => VN_PHONE_REGEX.test(value),
+      "Số điện thoại Việt Nam không hợp lệ (VD: 0901234567 hoặc +84901234567)"
+    ),
   city: z.string().trim().min(2, "Vui lòng nhập tỉnh/thành phố"),
   address: z.string().trim().min(5, "Địa chỉ tối thiểu 5 ký tự"),
   description: z.string().trim().optional(),

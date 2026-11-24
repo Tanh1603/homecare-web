@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/shared/ui/pagination";
 
 export function ServerPagination({
   page,
@@ -38,34 +45,40 @@ export function ServerPagination({
         <strong className="text-foreground">{Math.max(1, totalPages)}</strong>{" "}
         ({totalItems} bản ghi)
       </span>
-      <div className="flex items-center gap-2">
+      <Pagination className="mx-0 w-auto">
+        <PaginationContent>
+        <PaginationItem>
         {prevDisabled ? (
-          <Button variant="outline" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled aria-label="Trang trước">
             <ChevronLeft className="h-4 w-4" />
             Trước
           </Button>
         ) : (
-          <Button variant="outline" size="sm" asChild>
+          <PaginationPrevious asChild>
             <Link href={buildHref(page - 1)}>
               <ChevronLeft className="h-4 w-4" />
               Trước
             </Link>
-          </Button>
+          </PaginationPrevious>
         )}
+        </PaginationItem>
+        <PaginationItem>
         {nextDisabled ? (
-          <Button variant="outline" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled aria-label="Trang sau">
             Sau
             <ChevronRight className="h-4 w-4" />
           </Button>
         ) : (
-          <Button variant="outline" size="sm" asChild>
+          <PaginationNext asChild>
             <Link href={buildHref(page + 1)}>
               Sau
               <ChevronRight className="h-4 w-4" />
             </Link>
-          </Button>
+          </PaginationNext>
         )}
-      </div>
+        </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   );
 }

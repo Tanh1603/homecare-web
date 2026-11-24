@@ -18,6 +18,8 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -179,7 +181,7 @@ export function OrgMembersPanel({
                   <TableHead>Vai trò</TableHead>
                   <TableHead>Ngày tham gia</TableHead>
                   <TableHead>Trạng thái</TableHead>
-                  {canManage ? <TableHead>Thao tác</TableHead> : null}
+                  {canManage ? <TableHead className="text-right">Thao tác</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -207,24 +209,27 @@ export function OrgMembersPanel({
                       </TableCell>
                       <TableCell>
                         {canManage && !isSelf ? (
-                          <select
-                            aria-label={`Vai trò của ${displayName}`}
-                            value={m.role}
-                            disabled={busy}
-                            onChange={(e) =>
-                              handleRoleChange(
-                                m,
-                                e.target.value as (typeof ORG_ROLES)[number]
-                              )
-                            }
-                            className="h-8 rounded-md border border-input bg-card px-2 text-xs font-medium text-foreground"
-                          >
-                            {ORG_ROLES.map((r) => (
-                              <option key={r} value={r}>
-                                {formatOrgRoleLabel(r)}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="w-44">
+                            <NativeSelect
+                              size="sm"
+                              aria-label={`Vai trò của ${displayName}`}
+                              value={m.role}
+                              disabled={busy}
+                              onChange={(e) =>
+                                handleRoleChange(
+                                  m,
+                                  e.target.value as (typeof ORG_ROLES)[number]
+                                )
+                              }
+                              className="text-xs font-medium"
+                            >
+                              {ORG_ROLES.map((r) => (
+                                <NativeSelectOption key={r} value={r}>
+                                  {formatOrgRoleLabel(r)}
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                          </div>
                         ) : (
                           <Badge variant="outline">
                             {formatOrgRoleLabel(m.role)}
@@ -238,18 +243,26 @@ export function OrgMembersPanel({
                         <StatusBadge status={m.status} />
                       </TableCell>
                       {canManage ? (
-                        <TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap text-right">
                           {!isSelf ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <RowActionsMenu
+                              ariaLabel={`Thao tác cho thành viên ${displayName}`}
                               disabled={busy}
-                              onClick={() => handleRemove(m)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Xóa
-                            </Button>
+                              groups={[
+                                {
+                                  id: "danger",
+                                  items: [
+                                    {
+                                      id: "remove",
+                                      label: "Xóa khỏi tổ chức",
+                                      icon: Trash2,
+                                      destructive: true,
+                                      onSelect: () => handleRemove(m),
+                                    },
+                                  ],
+                                },
+                              ]}
+                            />
                           ) : (
                             <span className="text-xs text-muted-foreground">
                               —
@@ -299,21 +312,20 @@ export function OrgMembersPanel({
               }
             >
               <FormField label="Vai trò" htmlFor="member-role" required>
-                <select
+                <NativeSelect
                   id="member-role"
                   value={role}
                   disabled={!provisioned}
                   onChange={(e) =>
                     setRole(e.target.value as (typeof ORG_ROLES)[number])
                   }
-                  className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   {ORG_ROLES.map((r) => (
-                    <option key={r} value={r}>
+                    <NativeSelectOption key={r} value={r}>
                       {formatOrgRoleLabel(r)}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </FormField>
             </FormSection>
           </form>

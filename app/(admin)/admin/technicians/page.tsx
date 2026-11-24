@@ -34,7 +34,7 @@ export default async function AdminTechniciansPage({
         <EmptyState
           icon={Wrench}
           title="Chưa có kỹ thuật viên nào"
-          description="Danh sách kỹ thuật viên được lấy trực tiếp từ Provider Service (/api/v1/technicians)."
+          description="Chưa có kỹ thuật viên nào được đăng ký trên hệ thống."
         />
       ) : (
         <>

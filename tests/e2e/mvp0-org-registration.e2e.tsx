@@ -147,8 +147,27 @@ describe("MVP-0 Web Organization Capability vs LegalEntityType (F2 / T1-F2 & T2-
     expect(memNorm.legalEntityType).toBeNull();
   });
 
-  it("T1-F2-04: /register/org renders capability & legalEntityType controls, posts both, and redirects to /org/status", async () => {
-    const fetchMock = vi.fn(async () => {
+  it("T1-F2-04: /register/org enforces SERVICE-only capability, legalEntityType, taxCode, evidence upload, and redirects to /org/status", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/evidence/presign")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            code: 200,
+            message: "OK",
+            data: {
+              uploadUrl: "https://storage.example/upload",
+              objectKey: "organizations/u1/hkd.pdf",
+              bucket: "organization-evidence",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url === "https://storage.example/upload") {
+        return new Response(null, { status: 200 });
+      }
       return new Response(
         JSON.stringify({
           success: true,
@@ -157,8 +176,9 @@ describe("MVP-0 Web Organization Capability vs LegalEntityType (F2 / T1-F2 & T2-
           data: {
             id: "org-created-1",
             name: "Điện Lạnh Bách Khoa",
-            type: "BOTH",
+            type: "SERVICE",
             legalEntityType: "HOUSEHOLD_BUSINESS",
+            taxCode: "001090012345",
             status: "PENDING",
             phone: "0901234567",
             city: "TP. Hồ Chí Minh",
@@ -176,35 +196,55 @@ describe("MVP-0 Web Organization Capability vs LegalEntityType (F2 / T1-F2 & T2-
 
     const typeSelect = container.querySelector<HTMLSelectElement>("select#type");
     const legalSelect = container.querySelector<HTMLSelectElement>("select#legalEntityType");
+    const citySelect = container.querySelector<HTMLSelectElement>("select#city");
     expect(typeSelect).not.toBeNull();
     expect(legalSelect).not.toBeNull();
+    expect(citySelect).not.toBeNull();
+
+    // Non-SERVICE options are disabled in v0.1
+    expect(typeSelect!.querySelector<HTMLOptionElement>('option[value="COMMERCE"]')?.disabled).toBe(true);
+    expect(typeSelect!.querySelector<HTMLOptionElement>('option[value="BOTH"]')?.disabled).toBe(true);
+    expect(typeSelect!.querySelector<HTMLOptionElement>('option[value="SERVICE"]')?.disabled).toBe(false);
 
     fireEvent.change(container.querySelector<HTMLInputElement>("input#name")!, {
       target: { value: "Điện Lạnh Bách Khoa" },
     });
-    fireEvent.change(typeSelect!, { target: { value: "BOTH" } });
+    fireEvent.change(typeSelect!, { target: { value: "SERVICE" } });
     fireEvent.change(legalSelect!, { target: { value: "HOUSEHOLD_BUSINESS" } });
+    fireEvent.change(container.querySelector<HTMLInputElement>("input#taxCode")!, {
+      target: { value: "001090012345" },
+    });
     fireEvent.change(container.querySelector<HTMLInputElement>("input#phone")!, {
       target: { value: "0901234567" },
     });
-    fireEvent.change(container.querySelector<HTMLInputElement>("input#city")!, {
-      target: { value: "TP. Hồ Chí Minh" },
-    });
+    fireEvent.change(citySelect!, { target: { value: "TP. Hồ Chí Minh" } });
     fireEvent.change(container.querySelector<HTMLInputElement>("input#address")!, {
       target: { value: "456 Lê Lợi, Quận 1" },
+    });
+
+    const fileInput = screen.getByLabelText("Chọn tài liệu chứng minh pháp lý");
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["pdf"], "hkd.pdf", { type: "application/pdf" })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("hkd.pdf")).toBeTruthy();
     });
 
     fireEvent.submit(container.querySelector("form")!);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const registerCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]) === "/api/gateway/organizations"
+      );
+      expect(registerCall).toBeDefined();
+      const [, init] = registerCall as unknown as [string, RequestInit];
+      const sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      expect(sent.type).toBe("SERVICE");
+      expect(sent.legalEntityType).toBe("HOUSEHOLD_BUSINESS");
+      expect(sent.taxCode).toBe("001090012345");
+      expect(String(sent.identityEvidenceRefs)).toContain("organizations/u1/hkd.pdf");
     });
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/gateway/organizations");
-    const sent = JSON.parse(String(init.body)) as Record<string, unknown>;
-    expect(sent.type).toBe("BOTH");
-    expect(sent.legalEntityType).toBe("HOUSEHOLD_BUSINESS");
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/org/status");
@@ -212,7 +252,26 @@ describe("MVP-0 Web Organization Capability vs LegalEntityType (F2 / T1-F2 & T2-
   });
 
   it("T2-F2-04: /register/org displays inline /login?next=/register/org prompt on 401 without redirecting", async () => {
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/evidence/presign")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            code: 200,
+            message: "OK",
+            data: {
+              uploadUrl: "https://storage.example/upload",
+              objectKey: "organizations/u1/dkkd.pdf",
+              bucket: "organization-evidence",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url === "https://storage.example/upload") {
+        return new Response(null, { status: 200 });
+      }
       return new Response(
         JSON.stringify({
           success: false,
@@ -229,19 +288,34 @@ describe("MVP-0 Web Organization Capability vs LegalEntityType (F2 / T1-F2 & T2-
     const { container } = render(React.createElement(RegisterOrganizationPage));
     const typeSelect = container.querySelector<HTMLSelectElement>("select#type");
     const legalSelect = container.querySelector<HTMLSelectElement>("select#legalEntityType");
+    const citySelect = container.querySelector<HTMLSelectElement>("select#city");
     expect(typeSelect).not.toBeNull();
     expect(legalSelect).not.toBeNull();
+    expect(citySelect).not.toBeNull();
 
     fireEvent.change(container.querySelector<HTMLInputElement>("input#name")!, {
       target: { value: "Unauth Org" },
     });
     fireEvent.change(typeSelect!, { target: { value: "SERVICE" } });
     fireEvent.change(legalSelect!, { target: { value: "COMPANY" } });
+    fireEvent.change(container.querySelector<HTMLInputElement>("input#taxCode")!, {
+      target: { value: "0109283746" },
+    });
     fireEvent.change(container.querySelector<HTMLInputElement>("input#phone")!, {
       target: { value: "0901234567" },
     });
+    fireEvent.change(citySelect!, { target: { value: "TP. Hồ Chí Minh" } });
     fireEvent.change(container.querySelector<HTMLInputElement>("input#address")!, {
       target: { value: "456 Lê Lợi, Quận 1" },
+    });
+
+    const fileInput = screen.getByLabelText("Chọn tài liệu chứng minh pháp lý");
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["pdf"], "dkkd.pdf", { type: "application/pdf" })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("dkkd.pdf")).toBeTruthy();
     });
 
     fireEvent.submit(container.querySelector("form")!);

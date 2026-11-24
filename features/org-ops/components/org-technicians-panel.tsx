@@ -15,7 +15,10 @@ import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -293,33 +296,41 @@ export function OrgTechniciansPanel({
                 <TableCell>
                   <StatusBadge status={t.status} />
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openSchedules(t)}
-                    >
-                      <Calendar className="h-3.5 w-3.5" />
-                      Lịch
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openEdit(t)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Sửa
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(t)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <RowActionsMenu
+                    ariaLabel={`Thao tác cho kỹ thuật viên ${t.fullName}`}
+                    groups={[
+                      {
+                        id: "manage",
+                        items: [
+                          {
+                            id: "schedules",
+                            label: "Lịch làm việc",
+                            icon: Calendar,
+                            onSelect: () => openSchedules(t),
+                          },
+                          {
+                            id: "edit-tech",
+                            label: "Chỉnh sửa thông tin",
+                            icon: Pencil,
+                            onSelect: () => openEdit(t),
+                          },
+                        ],
+                      },
+                      {
+                        id: "danger",
+                        items: [
+                          {
+                            id: "delete-tech",
+                            label: "Xóa kỹ thuật viên",
+                            icon: Trash2,
+                            destructive: true,
+                            onSelect: () => handleDelete(t),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
@@ -406,17 +417,16 @@ export function OrgTechniciansPanel({
                   />
                 </FormField>
                 <FormField label="Trạng thái nhận việc" htmlFor="tech-status">
-                  <select
+                  <NativeSelect
                     id="tech-status"
                     value={status}
                     onChange={(e) =>
                       setStatus(e.target.value as "ACTIVE" | "INACTIVE")
                     }
-                    className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
                   >
-                    <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-                    <option value="INACTIVE">Tạm ngưng (INACTIVE)</option>
-                  </select>
+                    <NativeSelectOption value="ACTIVE">Đang hoạt động (ACTIVE)</NativeSelectOption>
+                    <NativeSelectOption value="INACTIVE">Tạm ngưng (INACTIVE)</NativeSelectOption>
+                  </NativeSelect>
                 </FormField>
               </div>
             </FormSection>
@@ -470,9 +480,25 @@ export function OrgTechniciansPanel({
             Khung giờ đã đăng ký ({schedules.length})
           </h3>
           {loadingSchedules ? (
-            <p className="text-xs text-muted-foreground">
-              Đang tải lịch làm việc...
-            </p>
+            <div
+              className="space-y-2"
+              role="status"
+              aria-label="Đang tải lịch làm việc"
+              aria-busy="true"
+            >
+              {[0, 1].map((row) => (
+                <div
+                  key={row}
+                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                >
+                  <div className="space-y-2">
+                    <Skeleton className="h-3.5 w-48 max-w-full" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <Skeleton className="h-8 w-8 rounded-md" />
+                </div>
+              ))}
+            </div>
           ) : schedules.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Chưa có khung giờ làm việc nào.

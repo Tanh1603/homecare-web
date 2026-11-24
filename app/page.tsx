@@ -2,240 +2,389 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  Building2,
-  CheckCircle2,
-  ClipboardCheck,
-  ShieldCheck,
-  SlidersHorizontal,
+  Home,
+  LogIn,
+  LogOut,
+  Package,
+  UsersRound,
+  Wrench,
 } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { ThemeToggle } from "@/shared/ui/theme-toggle";
-import { getServerAuthContext } from "@/shared/auth/guards";
-import { isAdminRole } from "@/shared/auth/roles";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/ui/card";
 
-const WORKFLOW_STEPS = [
+import { getServerAuthContext, type AuthContext } from "@/shared/auth/guards";
+import { isAdminRole } from "@/shared/auth/roles";
+import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
+import type { OrganizationMembership } from "@/features/organizations/contracts/organization";
+import { GatewayApiError } from "@/shared/api/api-envelope";
+import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
+import { Button } from "@/shared/ui/button";
+import { ErrorState } from "@/shared/ui/error-state";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
+import { redirect } from "next/navigation";
+
+const HIGHLIGHTS = [
   {
-    icon: Building2,
-    title: "Đăng ký đối tác",
-    detail: "Tổ chức gửi hồ sơ pháp lý và khu vực hoạt động qua cổng đối tác.",
+    icon: UsersRound,
+    title: "Quản lý đối tác",
+    description: "Hồ sơ, phê duyệt và phân quyền nhanh chóng.",
   },
   {
-    icon: ClipboardCheck,
-    title: "Admin xét duyệt",
-    detail: "Quản trị viên đối chiếu thông tin và phê duyệt trạng thái APPROVED.",
+    icon: Wrench,
+    title: "Điều phối dịch vụ",
+    description: "Kỹ thuật viên, lịch hẹn và đơn dịch vụ.",
   },
   {
-    icon: ShieldCheck,
-    title: "Đồng bộ phân quyền",
-    detail: "Hệ thống tự động cấp quyền ORGANIZATION trên Supabase RBAC.",
+    icon: Package,
+    title: "Quản lý sản phẩm",
+    description: "Dịch vụ, linh kiện và vật tư chính hãng.",
   },
-  {
-    icon: SlidersHorizontal,
-    title: "Vận hành trực tiếp",
-    detail: "Điều phối kỹ thuật viên, xử lý booking, đơn hàng và bảo hành.",
-  },
-];
+] as const;
+
+function getEntryErrorMessage(error: unknown): string {
+  const status = error instanceof GatewayApiError
+    ? error.status
+    : typeof error === "object" && error !== null && "status" in error
+      ? Number(error.status)
+      : undefined;
+  const errorCode =
+    error instanceof GatewayApiError
+      ? error.errorCode
+      : typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
+
+  if (isExpiredSessionError(error)) return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.";
+  if (status === 403) return "Tài khoản hiện không có quyền xem thông tin tổ chức.";
+  if (errorCode === "GATEWAY_UNAVAILABLE" || error instanceof TypeError || status === 502) {
+    return "Không thể kết nối tới HomeCare. Vui lòng kiểm tra kết nối mạng rồi thử lại.";
+  }
+  if (status !== undefined && status >= 500) {
+    return "Máy chủ HomeCare đang gặp sự cố. Thông tin tổ chức chưa thể tải lúc này.";
+  }
+  return "Không thể xác minh trạng thái tài khoản. Vui lòng thử lại sau.";
+}
+
+function isExpiredSessionError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const status = "status" in error ? Number(error.status) : undefined;
+  const code =
+    error instanceof GatewayApiError
+      ? error.errorCode
+      : "code" in error
+        ? String(error.code)
+        : undefined;
+  return (
+    status === 401 ||
+    code === "session_expired" ||
+    code === "refresh_token_not_found" ||
+    code === "refresh_token_already_used"
+  );
+}
+
+function HomeEntryError({
+  message,
+  loginRequired = false,
+}: {
+  message: string;
+  loginRequired?: boolean;
+}) {
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-5 py-12 sm:px-8">
+      <ErrorState title="Chưa thể mở không gian HomeCare" message={message} />
+      <div className="mt-4 flex justify-center gap-3">
+        {loginRequired ? (
+          <Button asChild>
+            <Link href="/login">Đăng nhập lại</Link>
+          </Button>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href="/">Thử lại</Link>
+          </Button>
+        )}
+      </div>
+    </main>
+  );
+}
 
 export default async function HomePage() {
-  const ctx = await getServerAuthContext();
-  const isSignedIn = Boolean(ctx);
-  const isAdmin = ctx ? isAdminRole(ctx.roles) : false;
-  const primaryHref = isAdmin ? "/admin" : "/org";
-  const primaryLabel = isAdmin ? "Vào Admin Portal" : "Vào Organization Portal";
+  let auth: AuthContext | null;
+  try {
+    auth = await getServerAuthContext();
+  } catch (error) {
+    return (
+      <HomeEntryError
+        message={getEntryErrorMessage(error)}
+        loginRequired={isExpiredSessionError(error)}
+      />
+    );
+  }
+
+  if (auth && isAdminRole(auth.roles)) redirect("/admin");
+
+  let memberships: OrganizationMembership[] | undefined;
+  if (auth) {
+    try {
+      memberships = await organizationsServerApi.listMyMemberships();
+    } catch (error) {
+      const status = error instanceof GatewayApiError ? error.status : undefined;
+      return (
+        <div className="flex min-h-dvh flex-col bg-surface text-foreground">
+          <header className="flex h-18 items-center justify-between border-b border-border/80 px-5 sm:px-8">
+            <Link href="/" aria-label="Trang chủ HomeCare" className="text-xl font-bold tracking-[-0.03em]">
+              <Image src="/homecare-logo.svg" alt="HomeCare" width={34} height={34} className="inline-block size-8.5 object-contain" />
+              <span className="ml-2">HomeCare</span>
+            </Link>
+            <div className="flex items-center gap-3">
+              <span className="hidden max-w-52 truncate text-xs text-muted-foreground sm:block">{auth.email}</span>
+              <ThemeToggle singleButton />
+            </div>
+          </header>
+          <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-12 sm:px-8">
+            <ErrorState title="Chưa thể xác minh tổ chức" message={getEntryErrorMessage(error)} />
+            <div className="mt-4 flex justify-center gap-3">
+              {status === 401 ? (
+                <Button asChild><Link href="/login">Đăng nhập lại</Link></Button>
+              ) : (
+                <Button asChild variant="outline"><Link href="/">Thử lại</Link></Button>
+              )}
+              <form action={signOut}>
+                <Button type="submit" variant="ghost"><LogOut aria-hidden="true" />Đăng xuất</Button>
+              </form>
+            </div>
+          </main>
+        </div>
+      );
+    }
+    if (memberships.length > 0) redirect("/org");
+  }
+
+  async function signOut() {
+    "use server";
+    const supabase = await createSupabaseServerClient();
+    await supabase.auth.signOut();
+    redirect("/");
+  }
+
+  if (auth) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-surface text-foreground">
+        <header className="flex h-18 items-center justify-between border-b border-border/80 px-5 sm:px-8">
+          <Link href="/" aria-label="Trang chủ HomeCare" className="text-xl font-bold tracking-[-0.03em]">
+            <Image src="/homecare-logo.svg" alt="HomeCare" width={34} height={34} className="inline-block size-8.5 object-contain" />
+            <span className="ml-2">HomeCare</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <span title={auth.email} className="hidden max-w-52 truncate text-xs text-muted-foreground sm:block">{auth.email}</span>
+            <ThemeToggle singleButton />
+            <form action={signOut}>
+              <Button type="submit" variant="ghost" size="sm" aria-label={`Đăng xuất tài khoản ${auth.email}`}>
+                <LogOut aria-hidden="true" className="size-4" />
+                Đăng xuất
+              </Button>
+            </form>
+          </div>
+        </header>
+        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center px-5 py-16 sm:px-8 lg:px-10">
+          <section className="max-w-2xl">
+            <p className="text-sm font-semibold text-primary">Xin chào, {auth.email}</p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Đăng ký tổ chức để bắt đầu cùng HomeCare
+            </h1>
+            <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground">
+              Tạo hồ sơ tổ chức để quản lý dịch vụ và tham gia mạng lưới đối tác HomeCare.
+            </p>
+            <Button asChild size="lg" className="mt-7">
+              <Link href="/register/org">Đăng ký tổ chức<ArrowRight aria-hidden="true" className="size-4" /></Link>
+            </Button>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-between">
-      <header className="border-b border-border bg-card/80">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
+    <div className="flex min-h-dvh flex-col bg-surface text-foreground">
+      {/* Fixed Header: luôn cố định khi cuộn trang */}
+      <header className="fixed inset-x-0 top-0 z-40 h-18 border-b border-border/80 bg-surface/95 backdrop-blur-sm">
+        <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
+          <Link
+            href="/"
+            aria-label="Trang chủ HomeCare"
+            className="inline-flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-surface"
+          >
             <Image
-              src="/homecare_logo.png"
-              alt="HomeCare Logo"
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-lg object-contain"
+              src="/homecare-logo.svg"
+              alt="HomeCare"
+              width={34}
+              height={34}
               priority
+              className="size-8.5 object-contain"
             />
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              HomeCare Platform
+            <span className="text-xl font-bold tracking-[-0.03em] text-foreground">
+              HomeCare
             </span>
           </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle compact />
-            {isSignedIn ? (
-              <>
-                <span className="hidden text-xs text-muted-foreground sm:inline">
-                  {ctx?.email}
-                </span>
-                <Button asChild size="sm">
-                  <Link href={primaryHref}>
-                    {primaryLabel}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/register/org">Đăng ký đối tác</Link>
-                </Button>
-                <Button asChild size="sm">
-                  <Link href="/login">Đăng nhập</Link>
-                </Button>
-              </>
-            )}
+
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <ThemeToggle singleButton />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:py-16 space-y-12">
-        <section className="max-w-3xl space-y-4">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl text-balance">
-            HomeCare Operations & Partner Portals
-          </h1>
-          <p className="text-base text-muted-foreground leading-relaxed max-w-2xl">
-            Cổng quản trị và vận hành tập trung kết nối trực tiếp tới hệ thống
-            microservices HomeCare API và xác thực Supabase Auth.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            {isSignedIn ? (
-              <Button asChild size="lg">
-                <Link href={primaryHref}>
-                  {primaryLabel}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            ) : (
-              <>
-                <Button asChild size="lg">
-                  <Link href="/org">
-                    Vào Organization Portal
-                    <ArrowRight className="h-4 w-4" />
+      <main className="flex flex-1 flex-col pt-18">
+        {/* Full-bleed Hero */}
+        <section className="relative flex flex-1 items-center overflow-hidden bg-surface py-12 sm:py-16 lg:min-h-135 lg:py-20">
+          {/* Subtle mint wave accent at bottom-left */}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 900 180"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute bottom-0 left-0 z-0 h-28 w-[72%] max-w-205 text-accent"
+          >
+            <path
+              d="M0 110 C 180 180, 420 40, 900 165 L 900 180 L 0 180 Z"
+              fill="currentColor"
+            />
+          </svg>
+
+          {/* Desktop full-bleed right technician image with seamless left fade */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[56%] lg:block">
+            <Image
+              src="/images/homecare-service-hero.jpg"
+              alt="Kỹ thuật viên HomeCare bảo dưỡng máy lạnh tại nhà"
+              fill
+              priority
+              unoptimized
+              sizes="56vw"
+              className="object-cover object-[center_22%]"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 bg-linear-to-r from-surface via-surface/75 via-22% to-transparent"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-surface/70 to-transparent"
+            />
+          </div>
+
+          <div className="relative z-10 mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-10">
+            <div className="max-w-xl">
+              <div className="inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground">
+                <Home className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Nền tảng dịch vụ gia đình</span>
+              </div>
+
+              <h1 className="mt-6 text-[clamp(2.15rem,3.6vw,3.15rem)] font-bold leading-[1.15] tracking-[-0.03em] text-foreground">
+                Kết nối đối tác,
+                <span className="mt-1 block">
+                  vận hành dịch vụ{" "}
+                  <span className="relative inline-block whitespace-nowrap text-[#16A34A] dark:text-[#22C55E]">
+                    tại nhà
+                    {/* Top-right burst rays */}
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 28 24"
+                      fill="none"
+                      className="pointer-events-none absolute -right-6 -top-3 h-5 w-6 text-[#16A34A] dark:text-[#22C55E]"
+                    >
+                      <path
+                        d="M5 14L9 5M14 14L20 9M17 20L25 19"
+                        stroke="currentColor"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    {/* Curved underline */}
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 180 12"
+                      fill="none"
+                      className="pointer-events-none absolute -bottom-1.5 left-0 w-full text-[#16A34A] dark:text-[#22C55E]"
+                    >
+                      <path
+                        d="M3 8.5C48 3 125 2.5 177 6.5"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                </span>
+              </h1>
+
+              <p className="mt-6 max-w-md text-base leading-7 text-muted-foreground">
+                Quản lý đối tác, kỹ thuật viên, dịch vụ và sản phẩm trên một nền
+                tảng duy nhất.
+              </p>
+
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Button
+                  asChild
+                  size="lg"
+                  className="h-11 gap-2 px-5 text-sm font-semibold"
+                >
+                  <Link href="/register/org">
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    Đăng ký đối tác
                   </Link>
                 </Button>
-                <Button asChild variant="outline" size="lg">
-                  <Link href="/admin">
-                    Vào Admin Portal
-                    <ShieldCheck className="h-4 w-4" />
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="h-11 gap-2 px-5 text-sm font-semibold"
+                >
+                  <Link href="/login">
+                    <LogIn
+                      aria-hidden="true"
+                      className="h-4 w-4 text-primary"
+                    />
+                    Đăng nhập
                   </Link>
                 </Button>
-              </>
-            )}
+              </div>
+            </div>
+
+            {/* Mobile hero image */}
+            <div className="relative mt-8 h-65 overflow-hidden rounded-2xl border border-border sm:h-85 lg:hidden">
+              <Image
+                src="/images/homecare-service-hero.jpg"
+                alt="Kỹ thuật viên HomeCare bảo dưỡng máy lạnh tại nhà"
+                fill
+                priority
+                unoptimized
+                sizes="100vw"
+                className="object-cover object-center"
+              />
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-6 md:grid-cols-2">
-          <Card className="flex flex-col justify-between transition-shadow duration-150 hover:shadow-md">
-            <CardHeader className="space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="space-y-1.5">
-                <CardTitle className="text-lg">Admin Portal</CardTitle>
-                <CardDescription className="leading-relaxed">
-                  Phê duyệt hồ sơ đối tác Organization, giám sát danh sách tài
-                  khoản người dùng Supabase, kỹ thuật viên và danh mục dịch vụ —
-                  linh kiện toàn nền tảng.
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                  Xét duyệt / từ chối / tạm ngưng hồ sơ Organization
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                  Theo dõi người dùng, kỹ thuật viên và danh mục chuẩn
-                </li>
-              </ul>
-              <Button asChild className="w-full">
-                <Link href="/admin">
-                  Mở Admin Portal
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="flex flex-col justify-between transition-shadow duration-150 hover:shadow-md">
-            <CardHeader className="space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-bg text-success">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div className="space-y-1.5">
-                <CardTitle className="text-lg">Organization Portal</CardTitle>
-                <CardDescription className="leading-relaxed">
-                  Không gian vận hành đa tổ chức dành cho trung tâm bảo hành và
-                  đơn vị cung ứng dịch vụ gia đình, vật tư chính hãng.
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                  Chuyển đổi nhanh giữa nhiều tổ chức trực thuộc
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                  Quản lý booking, đơn hàng, kỹ thuật viên, bảo hành & thành viên
-                </li>
-              </ul>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button asChild className="flex-1">
-                  <Link href="/org">
-                    Mở Organization Portal
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-                {!isAdmin ? (
-                  <Button asChild variant="outline" className="flex-1">
-                    <Link href="/register/org">Đăng ký đối tác</Link>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="text-sm font-semibold text-foreground">
-            Quy trình kích hoạt đối tác trên hệ thống
-          </h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {WORKFLOW_STEPS.map((step) => {
-              const Icon = step.icon;
-              return (
-                <div key={step.title} className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Icon className="h-4 w-4 text-primary shrink-0" />
-                    <span>{step.title}</span>
-                  </div>
+        {/* Bottom Highlights Strip */}
+        <section className="relative z-10 border-t border-border/80 bg-surface">
+          <div className="mx-auto grid w-full max-w-7xl gap-6 px-5 py-7 sm:grid-cols-3 sm:px-8 lg:px-10">
+            {HIGHLIGHTS.map(({ icon: Icon, title, description }) => (
+              <div key={title} className="flex items-center gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+                  <Icon
+                    aria-hidden="true"
+                    className="h-5 w-5"
+                    strokeWidth={1.9}
+                  />
+                </div>
+                <div className="min-w-0 space-y-0.5">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {title}
+                  </h2>
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    {step.detail}
+                    {description}
                   </p>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </section>
       </main>
-
-      <footer className="border-t border-border bg-card py-5">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 text-xs text-muted-foreground sm:flex-row sm:px-6">
-          <span>HomeCare Services & Commerce Ecosystem</span>
-          <span>API Gateway: /api/v1 · Auth: Supabase JWT</span>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -24,6 +24,25 @@ export default async function OrgOrdersPage({
   const tab = sp.tab === "products" ? "products" : "orders";
   const page = Math.max(1, Number(sp.page) || 1);
   const orgId = ctx.activeOrganization.organizationId;
+  const supportsCommerce =
+    ctx.activeOrganization.type === "COMMERCE" ||
+    ctx.activeOrganization.type === "BOTH";
+
+  if (!supportsCommerce) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Đơn hàng & Kho linh kiện"
+          description="Quản lý đơn hàng vật tư, xác nhận giao hàng và tồn kho sản phẩm."
+        />
+        <EmptyState
+          icon={Package}
+          title="Tổ chức chưa kích hoạt gian hàng linh kiện"
+          description="Tổ chức của bạn hiện hoạt động ở lĩnh vực Dịch vụ (SERVICE), không có đơn hàng hoặc kho linh kiện thương mại."
+        />
+      </div>
+    );
+  }
 
   const ordersPage =
     tab === "orders" ? await orgOpsApi.listOrdersPage(orgId, page, 20) : null;

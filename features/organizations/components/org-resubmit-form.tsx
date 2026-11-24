@@ -1,0 +1,238 @@
+"use client";
+
+import { organizationsApi } from "@/features/organizations/api";
+import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
+import {
+  LEGAL_ENTITY_TYPES,
+  LEGAL_ENTITY_TYPE_LABELS,
+  TAX_CODE_FIELD_CONFIG,
+  resubmitOrganizationSchema,
+  type LegalEntityType,
+  type Organization,
+  type ResubmitOrganizationInput,
+} from "@/features/organizations/contracts/organization";
+import { Button } from "@/shared/ui/button";
+import { FormField } from "@/shared/ui/form-drawer";
+import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { ProvinceSelect } from "@/shared/ui/province-select";
+import { Textarea } from "@/shared/ui/textarea";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
+
+export function OrgResubmitForm({
+  organization,
+}: {
+  organization: Organization;
+}) {
+  const router = useRouter();
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const form = useForm<ResubmitOrganizationInput>({
+    resolver: zodResolver(resubmitOrganizationSchema),
+    defaultValues: {
+      name: organization.name,
+      legalEntityType: organization.legalEntityType ?? "COMPANY",
+      taxCode: organization.taxCode ?? "",
+      phone: organization.phone,
+      city: organization.city,
+      address: organization.address ?? "",
+      description: organization.description ?? "",
+      identityEvidenceRefs: organization.identityEvidenceRefs ?? "",
+    },
+  });
+
+  const [legalEntityType, cityValue, evidenceValue] = useWatch({
+    control: form.control,
+    name: ["legalEntityType", "city", "identityEvidenceRefs"],
+  });
+
+  async function onSubmit(values: ResubmitOrganizationInput) {
+    setSubmitting(true);
+    try {
+      await organizationsApi.resubmit(
+        organization.id,
+        values,
+        organization.version,
+      );
+      toast.success("Đã gửi lại hồ sơ tổ chức. Trạng thái chuyển về PENDING.");
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể gửi lại hồ sơ.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={form.handleSubmit(onSubmit)}
+      className="space-y-4 rounded-lg border border-border bg-muted/20 p-4"
+    >
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-foreground">
+          Cập nhật &amp; nộp lại hồ sơ
+        </h3>
+        {typeof organization.resubmitCount === "number" ? (
+          <p className="text-xs text-muted-foreground tabular-nums">
+            Số lần đã nộp lại: {organization.resubmitCount}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormField
+          label="Tên tổ chức"
+          htmlFor="resubmit-name"
+          required
+          error={form.formState.errors.name?.message}
+          className="sm:col-span-2"
+        >
+          <Input
+            id="resubmit-name"
+            disabled={submitting}
+            {...form.register("name")}
+          />
+        </FormField>
+
+        <FormField
+          label="Loại hình pháp lý"
+          htmlFor="resubmit-legal-entity"
+          required
+          error={form.formState.errors.legalEntityType?.message}
+        >
+          <NativeSelect
+            id="resubmit-legal-entity"
+            disabled={submitting}
+            value={legalEntityType}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+              const nextType = e.target.value as LegalEntityType;
+              if (nextType !== legalEntityType) {
+                form.setValue("legalEntityType", nextType, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                form.setValue("identityEvidenceRefs", "", {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                toast.info(
+                  "Đã đổi loại hình pháp lý. Vui lòng tải lại tài liệu định danh phù hợp.",
+                );
+              }
+            }}
+          >
+            {LEGAL_ENTITY_TYPES.map((entityType) => (
+              <NativeSelectOption key={entityType} value={entityType}>
+                {LEGAL_ENTITY_TYPE_LABELS[entityType]}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </FormField>
+
+        <FormField
+          label={TAX_CODE_FIELD_CONFIG[legalEntityType].label}
+          htmlFor="resubmit-tax-code"
+          required={TAX_CODE_FIELD_CONFIG[legalEntityType].required}
+          hint={TAX_CODE_FIELD_CONFIG[legalEntityType].hint}
+          error={form.formState.errors.taxCode?.message}
+        >
+          <Input
+            id="resubmit-tax-code"
+            disabled={submitting}
+            aria-invalid={Boolean(form.formState.errors.taxCode) || undefined}
+            placeholder={TAX_CODE_FIELD_CONFIG[legalEntityType].placeholder}
+            {...form.register("taxCode")}
+          />
+        </FormField>
+
+        <FormField
+          label="Số điện thoại"
+          htmlFor="resubmit-phone"
+          required
+          error={form.formState.errors.phone?.message}
+        >
+          <Input
+            id="resubmit-phone"
+            disabled={submitting}
+            {...form.register("phone")}
+          />
+        </FormField>
+
+        <FormField
+          label="Tỉnh / Thành phố"
+          htmlFor="resubmit-city"
+          required
+          error={form.formState.errors.city?.message}
+        >
+          <ProvinceSelect
+            id="resubmit-city"
+            value={cityValue}
+            disabled={submitting}
+            onChange={(next) =>
+              form.setValue("city", next, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+          />
+        </FormField>
+
+        <FormField
+          label="Địa chỉ trụ sở"
+          htmlFor="resubmit-address"
+          required
+          error={form.formState.errors.address?.message}
+          className="sm:col-span-2"
+        >
+          <Input
+            id="resubmit-address"
+            disabled={submitting}
+            {...form.register("address")}
+          />
+        </FormField>
+
+        <FormField
+          label="Giới thiệu năng lực"
+          htmlFor="resubmit-description"
+          className="sm:col-span-2"
+        >
+          <Textarea
+            id="resubmit-description"
+            rows={2}
+            disabled={submitting}
+            {...form.register("description")}
+          />
+        </FormField>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <span className="text-sm font-medium text-foreground">
+            Tài liệu chứng minh pháp lý{" "}
+            <span className="text-destructive">*</span>
+          </span>
+          <OrgEvidenceUploader
+            legalEntityType={legalEntityType}
+            value={evidenceValue}
+            onChange={(next) =>
+              form.setValue("identityEvidenceRefs", next, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+            disabled={submitting}
+            error={form.formState.errors.identityEvidenceRefs?.message}
+          />
+        </div>
+      </div>
+
+      <Button type="submit" disabled={submitting} loading={submitting}>
+        {submitting ? "Đang gửi lại..." : "Nộp lại hồ sơ"}
+      </Button>
+    </form>
+  );
+}

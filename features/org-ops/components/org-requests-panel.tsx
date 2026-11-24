@@ -9,6 +9,8 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -194,52 +196,71 @@ export function OrgRequestsPanel({
                 <TableCell>
                   <StatusBadge status={r.status} />
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="inline-flex items-center gap-1">
-                    {r.status === "AWAITING_PROVIDER" ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleAccept(r)}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          Nhận việc
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleReject(r)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Từ chối
-                        </Button>
-                      </>
-                    ) : null}
-                    {r.priceType === "QUOTE_REQUIRED" &&
-                    (r.status === "DIAGNOSTIC_BOOKED" ||
-                      r.status === "AWAITING_QUOTATION" ||
-                      r.status === "QUOTATION_SENT") ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setQuoteTarget(r);
-                          setLines([
-                            {
-                              type: "LABOR",
-                              description: "",
-                              quantity: 1,
-                              unitPrice: 250000,
-                            },
-                          ]);
-                        }}
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        Báo giá
-                      </Button>
-                    ) : null}
-                  </div>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  {(() => {
+                    const isAwaitingProvider = r.status === "AWAITING_PROVIDER";
+                    const canQuote =
+                      r.priceType === "QUOTE_REQUIRED" &&
+                      (r.status === "DIAGNOSTIC_BOOKED" ||
+                        r.status === "AWAITING_QUOTATION" ||
+                        r.status === "QUOTATION_SENT");
+
+                    if (!isAwaitingProvider && !canQuote) {
+                      return (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      );
+                    }
+
+                    return (
+                      <RowActionsMenu
+                        ariaLabel={`Thao tác cho yêu cầu #${formatShortId(r.id)}`}
+                        groups={[
+                          {
+                            id: "actions",
+                            items: [
+                              {
+                                id: "accept",
+                                label: "Nhận việc",
+                                icon: Check,
+                                hidden: !isAwaitingProvider,
+                                onSelect: () => handleAccept(r),
+                              },
+                              {
+                                id: "quote",
+                                label: "Gửi báo giá",
+                                icon: FileText,
+                                hidden: !canQuote,
+                                onSelect: () => {
+                                  setQuoteTarget(r);
+                                  setLines([
+                                    {
+                                      type: "LABOR",
+                                      description: "",
+                                      quantity: 1,
+                                      unitPrice: 250000,
+                                    },
+                                  ]);
+                                },
+                              },
+                            ],
+                          },
+                          {
+                            id: "danger",
+                            items: [
+                              {
+                                id: "reject",
+                                label: "Từ chối yêu cầu",
+                                icon: X,
+                                destructive: true,
+                                hidden: !isAwaitingProvider,
+                                onSelect: () => handleReject(r),
+                              },
+                            ],
+                          },
+                        ]}
+                      />
+                    );
+                  })()}
                 </TableCell>
               </TableRow>
             ))}
@@ -269,7 +290,7 @@ export function OrgRequestsPanel({
             >
               <div className="sm:col-span-3">
                 <FormField label="Loại" htmlFor={`q-type-${idx}`}>
-                  <select
+                  <NativeSelect
                     id={`q-type-${idx}`}
                     value={line.type}
                     onChange={(e) => {
@@ -280,12 +301,12 @@ export function OrgRequestsPanel({
                       };
                       setLines(next);
                     }}
-                    className="h-9 w-full rounded-md border border-input bg-card px-2 text-xs"
+                    className="text-xs"
                   >
-                    <option value="LABOR">Nhân công</option>
-                    <option value="MATERIAL">Vật tư</option>
-                    <option value="OTHER">Khác</option>
-                  </select>
+                    <NativeSelectOption value="LABOR">Nhân công</NativeSelectOption>
+                    <NativeSelectOption value="MATERIAL">Vật tư</NativeSelectOption>
+                    <NativeSelectOption value="OTHER">Khác</NativeSelectOption>
+                  </NativeSelect>
                 </FormField>
               </div>
               <div className="sm:col-span-4">

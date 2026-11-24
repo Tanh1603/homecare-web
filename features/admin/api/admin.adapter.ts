@@ -176,12 +176,33 @@ export const adminApi = {
 
   async listUsersPage(
     page = 1,
-    size = 20
+    size = 20,
+    filters?: {
+      q?: string;
+      role?: string;
+      status?: string;
+      sortBy?: string;
+      sortDir?: "asc" | "desc";
+      excludeSelf?: boolean;
+      excludeUserId?: string;
+    }
   ): Promise<PageResponse<AdminUserItem>> {
+    const query = new URLSearchParams({
+      page: String(page),
+      size: String(size),
+    });
+    if (filters?.q?.trim()) query.set("q", filters.q.trim());
+    if (filters?.role && filters.role !== "ALL") query.set("role", filters.role);
+    if (filters?.status && filters.status !== "ALL")
+      query.set("status", filters.status);
+    if (filters?.sortBy?.trim()) query.set("sortBy", filters.sortBy.trim());
+    if (filters?.sortDir) query.set("sortDir", filters.sortDir);
+    if (filters?.excludeSelf) query.set("excludeSelf", "true");
+
     try {
       const data = await gatewayFetch<
         PageResponse<AdminUserItem> | AdminUserItem[]
-      >(`/admin/users?page=${page}&size=${size}`, {
+      >(`/admin/users?${query.toString()}`, {
         organizationId: null,
         scope: "personal",
       });
@@ -192,13 +213,43 @@ export const adminApi = {
     } catch (err) {
       const fallback = await listUsersFromSupabaseAdmin();
       if (fallback.length > 0) {
+        const needle = filters?.q?.trim().toLowerCase() || "";
+        const filtered = fallback
+          .filter((u) => !filters?.excludeUserId || u.id !== filters.excludeUserId)
+          .filter(
+            (u) =>
+              !filters?.role || filters.role === "ALL" || u.role === filters.role
+          )
+          .filter(
+            (u) =>
+              !filters?.status ||
+              filters.status === "ALL" ||
+              u.status === filters.status
+          )
+          .filter(
+            (u) =>
+              !needle ||
+              u.fullName.toLowerCase().includes(needle) ||
+              u.email.toLowerCase().includes(needle)
+          );
+        const dir = filters?.sortDir === "asc" ? 1 : -1;
+        const sortBy = filters?.sortBy || "createdAt";
+        filtered.sort((a, b) => {
+          const av = String((a as unknown as Record<string, unknown>)[sortBy] ?? "");
+          const bv = String((b as unknown as Record<string, unknown>)[sortBy] ?? "");
+          return av.localeCompare(bv) * dir;
+        });
+        const totalItems = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / size));
+        const from = Math.min((page - 1) * size, totalItems);
+        const items = filtered.slice(from, from + size);
         return {
-          items: fallback,
+          items,
           pagination: {
-            page: 1,
-            size: fallback.length,
-            totalItems: fallback.length,
-            totalPages: 1,
+            page,
+            size,
+            totalItems,
+            totalPages,
           },
         };
       }

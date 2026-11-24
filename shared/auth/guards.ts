@@ -7,11 +7,9 @@ import {
   isAdminRole,
 } from "@/shared/auth/roles";
 import {
-  normalizeMembership,
   type OrganizationMembership,
 } from "@/features/organizations/contracts/organization";
-import { gatewayFetch } from "@/shared/api/gateway-client";
-import { extractPageItems } from "@/shared/api/api-envelope";
+import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
 
 export const ACTIVE_ORG_COOKIE = "hc_active_org_id";
 
@@ -36,14 +34,28 @@ export async function getServerAuthContext(): Promise<AuthContext | null> {
 
   const supabase = await createSupabaseServerClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError && sessionError.name !== "AuthSessionMissingError") {
+    throw sessionError;
+  }
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error && error.name !== "AuthSessionMissingError") throw error;
+  if (!user) {
+    if (session) {
+      throw Object.assign(
+        new Error("Phiên đăng nhập đã hết hạn hoặc không còn hợp lệ"),
+        { status: 401, code: "session_expired" }
+      );
+    }
+    return null;
+  }
 
   const roles = extractRolesFromJwt(session?.access_token);
   const appRoles = Array.isArray(user.app_metadata?.roles)
@@ -66,17 +78,7 @@ export async function requireAdmin(): Promise<AuthContext> {
 }
 
 export async function getUserMemberships(): Promise<OrganizationMembership[]> {
-  try {
-    const data = await gatewayFetch<
-      { items?: Record<string, unknown>[] } | Record<string, unknown>[]
-    >("/organizations/my?page=1&size=100", {
-      organizationId: null,
-      scope: "personal",
-    });
-    return extractPageItems(data).map(normalizeMembership);
-  } catch {
-    return [];
-  }
+  return organizationsServerApi.listMyMemberships();
 }
 
 export async function requireOrgContext(): Promise<OrgContext> {

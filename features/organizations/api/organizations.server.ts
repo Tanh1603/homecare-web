@@ -21,6 +21,9 @@ export const organizationsServerApi = {
 
   async listAllPage(params?: {
     status?: OrganizationStatus;
+    q?: string;
+    sortBy?: string;
+    sortDir?: "asc" | "desc";
     page?: number;
     size?: number;
   }): Promise<PageResponse<Organization>> {
@@ -32,6 +35,15 @@ export const organizationsServerApi = {
     });
     if (params?.status) {
       query.set("status", params.status);
+    }
+    if (params?.q?.trim()) {
+      query.set("q", params.q.trim());
+    }
+    if (params?.sortBy?.trim()) {
+      query.set("sortBy", params.sortBy.trim());
+    }
+    if (params?.sortDir) {
+      query.set("sortDir", params.sortDir);
     }
     const data = await gatewayFetch<
       PageResponse<Record<string, unknown>> | Record<string, unknown>[]

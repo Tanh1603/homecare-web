@@ -1,15 +1,28 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/shared/ui/providers";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "HomeCare Portal — Admin & Organization",
   description:
     "Nền tảng quản trị hệ thống và vận hành đối tác dịch vụ gia đình HomeCare",
   icons: {
-    icon: "/homecare_logo.png",
-    shortcut: "/homecare_logo.png",
-    apple: "/homecare_logo.png",
+    icon: "/homecare-logo.svg",
+    shortcut: "/homecare-logo.svg",
+    apple: "/homecare-logo.svg",
   },
 };
 
@@ -17,7 +30,11 @@ const THEME_INIT_SCRIPT = `(function(){try{var k='hc_theme';var m=localStorage.g
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="vi" className="h-full antialiased" suppressHydrationWarning>
+    <html
+      lang="vi"
+      className={`h-full antialiased ${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

@@ -17,6 +17,16 @@ import {
   TableRow,
 } from "@/shared/ui/table";
 import { cn, formatVnd } from "@/shared/lib/utils";
+import {
+  formatProductType,
+  formatServiceCategory,
+} from "@/features/admin/lib/admin-labels";
+
+const CATALOG_TYPE_LABELS: Record<string, string> = {
+  SERVICE: "Dịch vụ",
+  PRODUCT: "Sản phẩm",
+  DEVICE: "Thiết bị",
+};
 
 export default async function AdminCatalogPage({
   searchParams,
@@ -35,7 +45,7 @@ export default async function AdminCatalogPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Danh mục Dịch vụ & Sản phẩm"
+        title="Dịch vụ & Sản phẩm"
         description="Giám sát toàn bộ dịch vụ và sản phẩm (bao gồm các mục đang tạm ngưng)."
       />
 
@@ -68,7 +78,7 @@ export default async function AdminCatalogPage({
         <EmptyState
           icon={FolderTree}
           title="Chưa có dữ liệu danh mục"
-          description="Kiểm tra kết nối API Gateway (/api/v1/services, /api/v1/products) hoặc khởi tạo dữ liệu dịch vụ và sản phẩm."
+          description="Hiện chưa có dịch vụ hoặc sản phẩm nào trong danh mục."
         />
       ) : (
         <>
@@ -82,7 +92,7 @@ export default async function AdminCatalogPage({
                   <TableHead>Đơn vị cung cấp</TableHead>
                   {tab === "products" ? (
                     <>
-                      <TableHead>SKU / Thương hiệu</TableHead>
+                      <TableHead>Mã sản phẩm / Thương hiệu</TableHead>
                       <TableHead>Bảo hành / Đổi trả</TableHead>
                       <TableHead>Tồn kho</TableHead>
                     </>
@@ -97,7 +107,9 @@ export default async function AdminCatalogPage({
                 {pageData.items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
-                      <Badge variant="outline">{item.type}</Badge>
+                      <Badge variant="outline">
+                        {CATALOG_TYPE_LABELS[item.type] ?? item.type}
+                      </Badge>
                     </TableCell>
                     <TableCell className="max-w-xs">
                       <div className="flex items-start gap-2.5">
@@ -131,9 +143,15 @@ export default async function AdminCatalogPage({
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      <p>{item.category}</p>
+                      <p>
+                        {item.type === "SERVICE"
+                          ? formatServiceCategory(item.category)
+                          : item.category}
+                      </p>
                       {item.productType ? (
-                        <p className="text-[11px]">{item.productType}</p>
+                        <p className="text-[11px]">
+                          {formatProductType(item.productType)}
+                        </p>
                       ) : null}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
@@ -146,9 +164,9 @@ export default async function AdminCatalogPage({
                           {item.brand ? ` · ${item.brand}` : ""}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          <span>BH {item.warrantyMonths ?? 0} th</span>
+                          <span>Bảo hành {item.warrantyMonths ?? 0} tháng</span>
                           {" · "}
-                          <span>Đổi {item.returnWindowDays ?? 0} ng</span>
+                          <span>Đổi trả {item.returnWindowDays ?? 0} ngày</span>
                         </TableCell>
                         <TableCell className="tabular-nums text-muted-foreground">
                           {item.availableQty ?? "—"}

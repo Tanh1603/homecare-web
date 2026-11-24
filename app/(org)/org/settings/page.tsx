@@ -3,6 +3,7 @@ import { requireOrgContext } from "@/shared/auth/guards";
 import { organizationsServerApi } from "@/features/organizations/api/organizations.server";
 import { OrgMembersPanel } from "@/features/organizations/components/org-members-panel";
 import { OrgProfileForm } from "@/features/organizations/components/org-profile-form";
+import { OrgQualificationsPanel } from "@/features/org-ops/components/org-qualifications-panel";
 import { PageHeader } from "@/shared/ui/page-header";
 
 export default async function OrgSettingsPage() {
@@ -21,7 +22,7 @@ export default async function OrgSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cài đặt tổ chức"
-        description="Thông tin pháp lý tổ chức và quản lý danh sách thành viên."
+        description="Thông tin pháp lý tổ chức, chứng chỉ chuyên môn và quản lý danh sách thành viên."
       />
       <OrgProfileForm
         organizationId={orgId}
@@ -30,6 +31,8 @@ export default async function OrgSettingsPage() {
         currentUserRole={ctx.activeOrganization.memberRole}
         initialOrganization={detail}
       />
+
+      <OrgQualificationsPanel organizationId={orgId} />
 
       <OrgMembersPanel
         organizationId={orgId}

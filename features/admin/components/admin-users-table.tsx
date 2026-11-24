@@ -17,6 +17,9 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -28,54 +31,115 @@ import {
 } from "@/shared/ui/table";
 import { formatDate } from "@/shared/lib/utils";
 
-type RoleFilter = "ALL" | "ADMIN" | "ORGANIZATION" | "TECHNICIAN" | "CUSTOMER";
+type RoleFilter = "ALL" | "ORGANIZATION" | "TECHNICIAN" | "CUSTOMER";
 type StatusFilter = "ALL" | "ACTIVE" | "SUSPENDED";
+
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Quản trị viên",
+  ORGANIZATION: "Tổ chức đối tác",
+  TECHNICIAN: "Kỹ thuật viên",
+  CUSTOMER: "Khách hàng",
+};
 
 export function AdminUsersTable({
   initialUsers,
+  initialQuery = "",
+  initialRole = "ALL",
+  initialStatus = "ALL",
+  initialSortBy = "createdAt",
+  initialSortDir = "desc",
 }: {
   initialUsers: AdminUserItem[];
+  initialQuery?: string;
+  initialRole?: RoleFilter;
+  initialStatus?: StatusFilter;
+  initialSortBy?: string;
+  initialSortDir?: "asc" | "desc";
 }) {
   const router = useRouter();
-  const [users, setUsers] = React.useState<AdminUserItem[]>(initialUsers);
-  const [query, setQuery] = React.useState("");
-  const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("ALL");
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
+  const [statusOverrides, setStatusOverrides] = React.useState<
+    Record<string, AdminUserItem["status"]>
+  >({});
+  const [prevInitialQuery, setPrevInitialQuery] = React.useState(initialQuery);
+  const [query, setQuery] = React.useState(initialQuery);
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery);
+    setQuery(initialQuery);
+  }
   const [inspectedUser, setInspectedUser] = React.useState<AdminUserItem | null>(null);
   const [confirmTarget, setConfirmTarget] = React.useState<{
     user: AdminUserItem;
     action: "SUSPEND" | "REACTIVATE";
   } | null>(null);
+  const [suspendReason, setSuspendReason] = React.useState("");
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
-  const filteredUsers = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return users.filter((u) => {
-      if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
-      if (statusFilter !== "ALL" && u.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        u.fullName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.id.toLowerCase().includes(q)
-      );
-    });
-  }, [users, query, roleFilter, statusFilter]);
+  function closeConfirmDialog() {
+    setConfirmTarget(null);
+    setSuspendReason("");
+  }
+
+  const users = React.useMemo(
+    () =>
+      initialUsers.map((u) =>
+        statusOverrides[u.id] ? { ...u, status: statusOverrides[u.id] } : u
+      ),
+    [initialUsers, statusOverrides]
+  );
+
+  const navigateWithParams = React.useCallback(
+    (next: {
+      q?: string;
+      role?: RoleFilter;
+      status?: StatusFilter;
+      sortBy?: string;
+      sortDir?: "asc" | "desc";
+    }) => {
+      const params = new URLSearchParams();
+      const targetQuery = (next.q ?? query).trim();
+      const targetRole = next.role ?? initialRole;
+      const targetStatus = next.status ?? initialStatus;
+      const targetSortBy = next.sortBy ?? initialSortBy;
+      const targetSortDir = next.sortDir ?? initialSortDir;
+
+      if (targetQuery) params.set("q", targetQuery);
+      if (targetRole !== "ALL") params.set("role", targetRole);
+      if (targetStatus !== "ALL") params.set("status", targetStatus);
+      if (targetSortBy !== "createdAt") params.set("sortBy", targetSortBy);
+      if (targetSortDir !== "desc") params.set("sortDir", targetSortDir);
+      params.set("page", "1");
+      router.replace(`/admin/users?${params.toString()}`);
+    },
+    [initialRole, initialSortBy, initialSortDir, initialStatus, query, router]
+  );
+
+  React.useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed === initialQuery.trim()) return;
+    const timer = window.setTimeout(() => {
+      navigateWithParams({ q: trimmed });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [initialQuery, navigateWithParams, query]);
+
+  const sortValue = `${initialSortBy}:${initialSortDir}`;
 
   async function handleConfirm() {
     if (!confirmTarget) return;
     const { user, action } = confirmTarget;
+    if (action === "SUSPEND" && !suspendReason.trim()) {
+      toast.error("Vui lòng nhập lý do tạm ngưng tài khoản.");
+      return;
+    }
     setBusyId(user.id);
     try {
       const updated =
         action === "SUSPEND"
-          ? await adminHttpApi.suspendUser(user.id)
+          ? await adminHttpApi.suspendUser(user.id, suspendReason.trim())
           : await adminHttpApi.reactivateUser(user.id);
       const nextStatus =
         updated?.status ?? (action === "SUSPEND" ? "SUSPENDED" : "ACTIVE");
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, status: nextStatus } : u))
-      );
+      setStatusOverrides((prev) => ({ ...prev, [user.id]: nextStatus }));
       setInspectedUser((prev) =>
         prev && prev.id === user.id ? { ...prev, status: nextStatus } : prev
       );
@@ -84,11 +148,11 @@ export function AdminUsersTable({
           ? `Đã tạm ngưng tài khoản ${user.email}`
           : `Đã kích hoạt lại tài khoản ${user.email}`
       );
-      setConfirmTarget(null);
+      closeConfirmDialog();
       router.refresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể cập nhật trạng thái user"
+        err instanceof Error ? err.message : "Không thể cập nhật trạng thái người dùng"
       );
     } finally {
       setBusyId(null);
@@ -103,36 +167,63 @@ export function AdminUsersTable({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo tên, email hoặc UUID..."
+            placeholder="Tìm theo tên hoặc email..."
             className="pl-9"
             aria-label="Tìm kiếm người dùng"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Lọc theo vai trò"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-xs font-medium text-foreground"
-          >
-            <option value="ALL">Tất cả vai trò</option>
-            <option value="ADMIN">ADMIN</option>
-            <option value="ORGANIZATION">ORGANIZATION</option>
-            <option value="TECHNICIAN">TECHNICIAN</option>
-            <option value="CUSTOMER">CUSTOMER</option>
-          </select>
+          <div className="w-40">
+            <NativeSelect
+              aria-label="Lọc theo vai trò"
+              value={initialRole}
+              onChange={(e) =>
+                navigateWithParams({ role: e.target.value as RoleFilter })
+              }
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="ALL">Tất cả vai trò</NativeSelectOption>
+              <NativeSelectOption value="ORGANIZATION">Tổ chức đối tác</NativeSelectOption>
+              <NativeSelectOption value="TECHNICIAN">Kỹ thuật viên</NativeSelectOption>
+              <NativeSelectOption value="CUSTOMER">Khách hàng</NativeSelectOption>
+            </NativeSelect>
+          </div>
 
-          <select
-            aria-label="Lọc theo trạng thái"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-xs font-medium text-foreground"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Hoạt động</option>
-            <option value="SUSPENDED">Tạm ngưng</option>
-          </select>
+          <div className="w-40">
+            <NativeSelect
+              aria-label="Lọc theo trạng thái"
+              value={initialStatus}
+              onChange={(e) =>
+                navigateWithParams({ status: e.target.value as StatusFilter })
+              }
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
+              <NativeSelectOption value="ACTIVE">Hoạt động</NativeSelectOption>
+              <NativeSelectOption value="SUSPENDED">Tạm ngưng</NativeSelectOption>
+            </NativeSelect>
+          </div>
+
+          <div className="w-44">
+            <NativeSelect
+              aria-label="Sắp xếp người dùng"
+              value={sortValue}
+              onChange={(e) => {
+                const [nextSortBy, nextSortDir] = e.target.value.split(":");
+                navigateWithParams({
+                  sortBy: nextSortBy,
+                  sortDir: nextSortDir === "asc" ? "asc" : "desc",
+                });
+              }}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="createdAt:desc">Mới tạo nhất</NativeSelectOption>
+              <NativeSelectOption value="createdAt:asc">Tạo cũ nhất</NativeSelectOption>
+              <NativeSelectOption value="fullName:asc">Họ tên (A → Z)</NativeSelectOption>
+              <NativeSelectOption value="email:asc">Email (A → Z)</NativeSelectOption>
+            </NativeSelect>
+          </div>
         </div>
       </div>
 
@@ -149,7 +240,7 @@ export function AdminUsersTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.length === 0 ? (
+            {users.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -159,60 +250,79 @@ export function AdminUsersTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((u) => {
+              users.map((u) => {
                 const isSuspended = u.status === "SUSPENDED";
                 return (
                   <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.fullName}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setInspectedUser(u)}
+                        className="text-left font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        {u.fullName}
+                      </button>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {u.email}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{u.role}</Badge>
+                      <Badge variant="outline">
+                        {ROLE_LABELS[u.role] ?? u.role}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatDate(u.createdAt)}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={u.status} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setInspectedUser(u)}
-                          aria-label={`Xem chi tiết ${u.email}`}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Chi tiết
-                        </Button>
-                        {isSuspended ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyId === u.id}
-                            onClick={() =>
-                              setConfirmTarget({ user: u, action: "REACTIVATE" })
-                            }
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                            Kích hoạt lại
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyId === u.id}
-                            onClick={() =>
-                              setConfirmTarget({ user: u, action: "SUSPEND" })
-                            }
-                          >
-                            <PauseCircle className="h-3.5 w-3.5 text-warning" />
-                            Tạm ngưng
-                          </Button>
-                        )}
-                      </div>
+                    <TableCell className="w-[1%] whitespace-nowrap text-right">
+                      <RowActionsMenu
+                        ariaLabel={`Mở menu thao tác cho ${u.email}`}
+                        disabled={busyId === u.id}
+                        groups={[
+                          {
+                            id: "inspect",
+                            items: [
+                              {
+                                id: "view",
+                                label: "Xem chi tiết tài khoản",
+                                icon: Eye,
+                                onSelect: () => setInspectedUser(u),
+                              },
+                            ],
+                          },
+                          {
+                            id: "account-status",
+                            items: [
+                              {
+                                id: "reactivate",
+                                label: "Kích hoạt lại tài khoản",
+                                icon: CheckCircle2,
+                                hidden: !isSuspended,
+                                onSelect: () =>
+                                  setConfirmTarget({
+                                    user: u,
+                                    action: "REACTIVATE",
+                                  }),
+                              },
+                              {
+                                id: "suspend",
+                                label: "Tạm ngưng tài khoản",
+                                icon: PauseCircle,
+                                destructive: true,
+                                hidden: isSuspended,
+                                onSelect: () =>
+                                  setConfirmTarget({
+                                    user: u,
+                                    action: "SUSPEND",
+                                  }),
+                              },
+                            ],
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
@@ -264,18 +374,11 @@ export function AdminUsersTable({
                 <StatusBadge status={inspectedUser.status} />
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Global Role</span>
-                <Badge variant="outline">{inspectedUser.role}</Badge>
+                <span className="text-xs text-muted-foreground">Vai trò hệ thống</span>
+                <Badge variant="outline">
+                  {ROLE_LABELS[inspectedUser.role] ?? inspectedUser.role}
+                </Badge>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <dt className="text-xs font-medium text-muted-foreground">
-                Supabase User UUID
-              </dt>
-              <dd className="font-mono text-xs text-foreground break-all rounded-md bg-surface-secondary px-2.5 py-2 border border-border-subtle">
-                {inspectedUser.id}
-              </dd>
             </div>
 
             <div className="space-y-1">
@@ -298,7 +401,7 @@ export function AdminUsersTable({
       <Dialog
         open={Boolean(confirmTarget)}
         onOpenChange={(open) => {
-          if (!open) setConfirmTarget(null);
+          if (!open) closeConfirmDialog();
         }}
       >
         <DialogContent>
@@ -315,11 +418,26 @@ export function AdminUsersTable({
                 ? `Tài khoản "${confirmTarget?.user.email}" sẽ bị thu hồi phiên và không thể đăng nhập.`
                 : `Tài khoản "${confirmTarget?.user.email}" sẽ được phép đăng nhập trở lại.`}
             </p>
+            {confirmTarget?.action === "SUSPEND" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="user-suspend-reason">
+                  Lý do tạm ngưng (bắt buộc)
+                </Label>
+                <Input
+                  id="user-suspend-reason"
+                  value={suspendReason}
+                  onChange={(e) => setSuspendReason(e.target.value)}
+                  placeholder="VD: Vi phạm điều khoản sử dụng hoặc gian lận"
+                  disabled={Boolean(busyId)}
+                />
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setConfirmTarget(null)}
+                onClick={closeConfirmDialog}
+                disabled={Boolean(busyId)}
               >
                 Hủy
               </Button>
@@ -330,7 +448,10 @@ export function AdminUsersTable({
                     ? "destructive"
                     : "default"
                 }
-                disabled={Boolean(busyId)}
+                disabled={
+                  Boolean(busyId) ||
+                  (confirmTarget?.action === "SUSPEND" && !suspendReason.trim())
+                }
                 onClick={handleConfirm}
               >
                 {busyId ? "Đang xử lý..." : "Xác nhận"}

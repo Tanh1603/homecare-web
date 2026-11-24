@@ -25,6 +25,8 @@ import {
   focusFirstInvalidField,
 } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
 import {
@@ -411,25 +413,24 @@ export function OrgProductsPanel({
                     />
                   </FormField>
                   <FormField label="Loại sản phẩm" htmlFor="prod-type">
-                    <select
+                    <NativeSelect
                       id="prod-type"
                       value={form.productType}
                       onChange={(e) =>
                         updateField("productType", e.target.value)
                       }
-                      className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
                     >
                       {Object.entries(PRODUCT_TYPE_LABELS).map(
                         ([val, label]) => (
-                          <option key={val} value={val}>
+                          <NativeSelectOption key={val} value={val}>
                             {label}
-                          </option>
+                          </NativeSelectOption>
                         )
                       )}
-                    </select>
+                    </NativeSelect>
                   </FormField>
                   <FormField label="Trạng thái kinh doanh" htmlFor="prod-status">
-                    <select
+                    <NativeSelect
                       id="prod-status"
                       value={form.status}
                       onChange={(e) =>
@@ -438,11 +439,10 @@ export function OrgProductsPanel({
                           e.target.value as "ACTIVE" | "INACTIVE"
                         )
                       }
-                      className="h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm text-foreground"
                     >
-                      <option value="ACTIVE">Đang kinh doanh (ACTIVE)</option>
-                      <option value="INACTIVE">Tạm ngưng (INACTIVE)</option>
-                    </select>
+                      <NativeSelectOption value="ACTIVE">Đang kinh doanh (ACTIVE)</NativeSelectOption>
+                      <NativeSelectOption value="INACTIVE">Tạm ngưng (INACTIVE)</NativeSelectOption>
+                    </NativeSelect>
                   </FormField>
                 </div>
               </FormSection>
@@ -731,25 +731,44 @@ export function OrgProductsPanel({
                   <TableCell>
                     <StatusBadge status={p.status} />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(p)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Sửa
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(p)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                  <TableCell className="w-[1%] whitespace-nowrap text-right">
+                    <RowActionsMenu
+                      ariaLabel={`Thao tác cho sản phẩm ${p.name}`}
+                      groups={[
+                        {
+                          id: "edit",
+                          items: [
+                            {
+                              id: "edit-product",
+                              label: "Chỉnh sửa sản phẩm",
+                              icon: Pencil,
+                              onSelect: () => openEdit(p),
+                            },
+                            {
+                              id: "edit-stock",
+                              label: "Cập nhật tồn kho",
+                              icon: Boxes,
+                              onSelect: () => {
+                                setStockEditId(p.id);
+                                setStockQty(String(p.availableQty));
+                              },
+                            },
+                          ],
+                        },
+                        {
+                          id: "danger",
+                          items: [
+                            {
+                              id: "delete-product",
+                              label: "Xóa sản phẩm",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => handleDelete(p),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               );

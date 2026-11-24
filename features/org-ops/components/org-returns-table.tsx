@@ -18,6 +18,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   Table,
@@ -193,67 +194,67 @@ export function OrgReturnsTable({
                   <TableCell>
                     <StatusBadge status={r.status} domain="return" />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      {isPending ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyId === r.id}
-                            onClick={() => {
-                              setTarget({ item: r, action: "APPROVE" });
-                              setNote("");
-                            }}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                            Duyệt
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={busyId === r.id}
-                            onClick={() => {
-                              setTarget({ item: r, action: "REJECT" });
-                              setNote("");
-                            }}
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            Từ chối
-                          </Button>
-                        </>
-                      ) : null}
-                      {canRetry ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === r.id}
-                          onClick={() => handleRetryRefund(r)}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          Thử lại
-                        </Button>
-                      ) : null}
-                      {canManualRefund ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === r.id}
-                          onClick={() => {
-                            setRefundTarget(r);
-                            setRefundRef("");
-                            setRefundNote("");
-                          }}
-                        >
-                          <Banknote className="h-3.5 w-3.5 text-success" />
-                          Xác nhận hoàn tiền
-                        </Button>
-                      ) : null}
-                      {!isPending && !canManualRefund && !canRetry ? (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ) : null}
-                    </div>
+                  <TableCell className="w-[1%] whitespace-nowrap text-right">
+                    {!isPending && !canManualRefund && !canRetry ? (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    ) : (
+                      <RowActionsMenu
+                        ariaLabel={`Thao tác cho yêu cầu trả hàng #${formatShortId(r.id)}`}
+                        disabled={busyId === r.id}
+                        primaryAction={
+                          canManualRefund
+                            ? {
+                                label: "Xác nhận hoàn tiền",
+                                icon: Banknote,
+                                onClick: () => {
+                                  setRefundTarget(r);
+                                  setRefundRef("");
+                                  setRefundNote("");
+                                },
+                              }
+                            : isPending
+                              ? {
+                                  label: "Duyệt",
+                                  icon: CheckCircle2,
+                                  onClick: () => {
+                                    setTarget({ item: r, action: "APPROVE" });
+                                    setNote("");
+                                  },
+                                }
+                              : null
+                        }
+                        groups={[
+                          {
+                            id: "actions",
+                            items: [
+                              {
+                                id: "retry",
+                                label: "Thử lại hoàn tiền",
+                                icon: RefreshCw,
+                                hidden: !canRetry,
+                                onSelect: () => handleRetryRefund(r),
+                              },
+                            ],
+                          },
+                          {
+                            id: "danger",
+                            items: [
+                              {
+                                id: "reject",
+                                label: "Từ chối yêu cầu",
+                                icon: XCircle,
+                                destructive: true,
+                                hidden: !isPending,
+                                onSelect: () => {
+                                  setTarget({ item: r, action: "REJECT" });
+                                  setNote("");
+                                },
+                              },
+                            ],
+                          },
+                        ]}
+                      />
+                    )}
                   </TableCell>
                 </TableRow>
               );
