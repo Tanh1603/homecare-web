@@ -1,11 +1,17 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import type { OrgServiceItem } from "../api/org-ops.adapter";
+import type {
+  OrgServiceCoverageArea,
+  OrgServiceItem,
+} from "../api/org-ops.adapter";
 import { orgOpsHttpApi } from "../api/org-ops.http";
+import { Alert, AlertDescription } from "@/shared/ui/alert";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import {
@@ -16,6 +22,7 @@ import {
 } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import { ProvinceSelect } from "@/shared/ui/province-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
@@ -30,13 +37,62 @@ import {
 import { formatVnd } from "@/shared/lib/utils";
 
 export const V01_SERVICE_CATEGORIES = [
-  { code: "AC_CLEANING_MAINTENANCE", label: "Vệ sinh & Bảo dưỡng máy lạnh", minDays: 0, maxDays: 30 },
-  { code: "AC_REPAIR_INSTALL", label: "Sửa chữa & Lắp đặt máy lạnh (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
-  { code: "ELECTRICAL_REPAIR", label: "Sửa chữa điện dân dụng (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
-  { code: "PLUMBING", label: "Sửa chữa ống nước & Thiết bị vệ sinh", minDays: 7, maxDays: 90 },
-  { code: "APPLIANCE_REPAIR", label: "Sửa chữa thiết bị gia dụng", minDays: 7, maxDays: 90 },
-  { code: "WATER_HEATER_GAS", label: "Máy nước nóng & Thiết bị gas (Cần chứng chỉ)", minDays: 7, maxDays: 90 },
+  {
+    code: "AC_CLEANING_MAINTENANCE",
+    label: "Vệ sinh & Bảo dưỡng máy lạnh",
+    minDays: 0,
+    maxDays: 30,
+    requiresQualification: false,
+  },
+  {
+    code: "AC_REPAIR_INSTALL",
+    label: "Sửa chữa & Lắp đặt máy lạnh",
+    minDays: 7,
+    maxDays: 90,
+    requiresQualification: true,
+  },
+  {
+    code: "ELECTRICAL_REPAIR",
+    label: "Sửa chữa điện dân dụng",
+    minDays: 7,
+    maxDays: 90,
+    requiresQualification: true,
+  },
+  {
+    code: "PLUMBING",
+    label: "Sửa chữa ống nước & Thiết bị vệ sinh",
+    minDays: 7,
+    maxDays: 90,
+    requiresQualification: false,
+  },
+  {
+    code: "APPLIANCE_REPAIR",
+    label: "Sửa chữa thiết bị gia dụng",
+    minDays: 7,
+    maxDays: 90,
+    requiresQualification: false,
+  },
+  {
+    code: "WATER_HEATER_GAS",
+    label: "Máy nước nóng & Thiết bị gas",
+    minDays: 7,
+    maxDays: 90,
+    requiresQualification: true,
+  },
 ] as const;
+
+export function getServiceCategoryMeta(code: string) {
+  return V01_SERVICE_CATEGORIES.find((c) => c.code === code);
+}
+
+export function getServiceCategoryLabel(code: string): string {
+  return getServiceCategoryMeta(code)?.label ?? code;
+}
+
+interface CoverageDraftItem {
+  locationCode: string;
+  level: "PROVINCE" | "WARD";
+}
 
 interface ServiceFormValues {
   name: string;
@@ -46,7 +102,7 @@ interface ServiceFormValues {
   inspectionFee: string;
   inspectionFeePolicy: "NO_FEE" | "CREDIT_FULL" | "NON_CREDITABLE";
   workmanshipDurationDays: string;
-  coverageCodes: string;
+  coverageAreas: CoverageDraftItem[];
   duration: string;
   description: string;
   active: boolean;
@@ -60,7 +116,7 @@ const DEFAULT_SERVICE_FORM: ServiceFormValues = {
   inspectionFee: "0",
   inspectionFeePolicy: "NO_FEE",
   workmanshipDurationDays: "14",
-  coverageCodes: "",
+  coverageAreas: [],
   duration: "60",
   description: "",
   active: false,
@@ -88,6 +144,10 @@ export function OrgServicesPanel({
   );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [saving, setSaving] = React.useState(false);
+  const [coverageLevelDraft, setCoverageLevelDraft] = React.useState<
+    "PROVINCE" | "WARD"
+  >("PROVINCE");
+  const [coverageLocationDraft, setCoverageLocationDraft] = React.useState("");
 
   const isDirty = React.useMemo(
     () => JSON.stringify(form) !== JSON.stringify(initialForm),
@@ -108,15 +168,86 @@ export function OrgServicesPanel({
     }
   }
 
+  function handleCategoryChange(nextCategory: string) {
+    const nextMeta = getServiceCategoryMeta(nextCategory);
+    setForm((prev) => {
+      let nextDays = prev.workmanshipDurationDays;
+      if (nextMeta) {
+        const parsed = Number(prev.workmanshipDurationDays);
+        if (!Number.isFinite(parsed) || parsed < nextMeta.minDays) {
+          nextDays = String(nextMeta.minDays);
+        } else if (parsed > nextMeta.maxDays) {
+          nextDays = String(nextMeta.maxDays);
+        }
+      }
+      return {
+        ...prev,
+        category: nextCategory,
+        workmanshipDurationDays: nextDays,
+      };
+    });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.category;
+      delete next.workmanshipDurationDays;
+      return next;
+    });
+  }
+
+  const selectedCategoryMeta = getServiceCategoryMeta(form.category);
+
+  function handleAddCoverageArea() {
+    const locationCode = coverageLocationDraft.trim();
+    if (!locationCode) {
+      toast.error("Vui lòng chọn hoặc nhập mã khu vực phục vụ.");
+      return;
+    }
+    const exists = form.coverageAreas.some(
+      (a) =>
+        a.level === coverageLevelDraft &&
+        a.locationCode.toLowerCase() === locationCode.toLowerCase()
+    );
+    if (exists) {
+      toast.error("Khu vực phục vụ này đã có trong danh sách.");
+      return;
+    }
+    updateField("coverageAreas", [
+      ...form.coverageAreas,
+      { locationCode, level: coverageLevelDraft },
+    ]);
+    setCoverageLocationDraft("");
+  }
+
+  function handleRemoveCoverageArea(target: CoverageDraftItem) {
+    updateField(
+      "coverageAreas",
+      form.coverageAreas.filter(
+        (a) =>
+          !(
+            a.level === target.level &&
+            a.locationCode === target.locationCode
+          )
+      )
+    );
+  }
+
   function openCreate() {
     setEditTarget(null);
     setForm(DEFAULT_SERVICE_FORM);
     setInitialForm(DEFAULT_SERVICE_FORM);
+    setCoverageLevelDraft("PROVINCE");
+    setCoverageLocationDraft("");
     setErrors({});
     setDrawerOpen(true);
   }
 
   function openEdit(s: OrgServiceItem) {
+    const mappedAreas: CoverageDraftItem[] = (s.coverageAreas ?? [])
+      .filter((c) => c.active !== false && c.locationCode?.trim())
+      .map((c) => ({
+        locationCode: c.locationCode.trim(),
+        level: c.level === "WARD" ? "WARD" : "PROVINCE",
+      }));
     const vals: ServiceFormValues = {
       name: s.name,
       category: s.category,
@@ -129,9 +260,7 @@ export function OrgServicesPanel({
       workmanshipDurationDays: String(
         (s as { workmanshipDurationDays?: number }).workmanshipDurationDays ?? 14
       ),
-      coverageCodes: (s.coverageAreas ?? [])
-        .map((c) => `${c.locationCode}:${c.level}`)
-        .join(", "),
+      coverageAreas: mappedAreas,
       duration: String(s.estimatedDurationMinutes),
       description: s.description ?? "",
       active: s.active,
@@ -139,6 +268,8 @@ export function OrgServicesPanel({
     setEditTarget(s);
     setForm(vals);
     setInitialForm(vals);
+    setCoverageLevelDraft("PROVINCE");
+    setCoverageLocationDraft("");
     setErrors({});
     setDrawerOpen(true);
   }
@@ -155,17 +286,27 @@ export function OrgServicesPanel({
     if (!Number.isFinite(fee) || fee < 0) {
       nextErrors.inspectionFee = "Phí khảo sát phải >= 0 VNĐ";
     }
-    const catMeta = V01_SERVICE_CATEGORIES.find((c) => c.code === form.category);
-    const wDays = Number(form.workmanshipDurationDays || 0);
+    const catMeta = getServiceCategoryMeta(form.category);
+    if (!catMeta) {
+      nextErrors.category = "Vui lòng chọn danh mục dịch vụ hợp lệ";
+    }
+    const wDaysRaw = form.workmanshipDurationDays.trim();
+    const wDays = wDaysRaw === "" ? Number.NaN : Number(wDaysRaw);
     if (
       catMeta &&
-      (!Number.isFinite(wDays) || wDays < catMeta.minDays || wDays > catMeta.maxDays)
+      (!Number.isInteger(wDays) ||
+        wDays < catMeta.minDays ||
+        wDays > catMeta.maxDays)
     ) {
-      nextErrors.workmanshipDurationDays = `Bảo hành tay nghề cho ${catMeta.code} phải trong [${catMeta.minDays}, ${catMeta.maxDays}] ngày`;
+      nextErrors.workmanshipDurationDays = `Bảo hành tay nghề cho ${catMeta.label} phải từ ${catMeta.minDays} đến ${catMeta.maxDays} ngày`;
     }
     const dur = Number(form.duration);
     if (!Number.isFinite(dur) || dur < 15) {
       nextErrors.duration = "Thời lượng tối thiểu 15 phút";
+    }
+    if (form.active && form.coverageAreas.length === 0) {
+      nextErrors.coverageAreas =
+        "Cần ít nhất 1 khu vực phục vụ (Tỉnh/Thành hoặc Phường/Xã) trước khi bật Đang hoạt động.";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -180,7 +321,14 @@ export function OrgServicesPanel({
     setSaving(true);
     try {
       const fee = Math.max(0, Number(form.inspectionFee) || 0);
-      const payload = {
+      const areasPayload: OrgServiceCoverageArea[] = form.coverageAreas.map(
+        (a) => ({
+          locationCode: a.locationCode,
+          level: a.level,
+          active: true,
+        })
+      );
+      const basePayload = {
         name: form.name.trim(),
         category: form.category.trim(),
         description: form.description.trim() || undefined,
@@ -188,9 +336,8 @@ export function OrgServicesPanel({
         priceType: form.priceType,
         inspectionFee: fee,
         inspectionFeePolicy: form.inspectionFeePolicy,
-        workmanshipDurationDays: Number(form.workmanshipDurationDays) || 7,
+        workmanshipDurationDays: Number(form.workmanshipDurationDays),
         estimatedDurationMinutes: Math.max(15, Number(form.duration) || 60),
-        active: form.active,
       };
       if (fee > 500000) {
         toast.warning(
@@ -198,26 +345,59 @@ export function OrgServicesPanel({
         );
       }
       if (editTarget) {
+        let savedAreas = editTarget.coverageAreas ?? [];
+        const coverageChanged =
+          JSON.stringify(form.coverageAreas) !==
+          JSON.stringify(initialForm.coverageAreas);
+        if (coverageChanged || areasPayload.length > 0) {
+          savedAreas = await orgOpsHttpApi.replaceServiceCoverage(
+            organizationId,
+            editTarget.id,
+            areasPayload
+          );
+        }
         const updated = await orgOpsHttpApi.updateService(
           organizationId,
           editTarget.id,
-          payload
+          { ...basePayload, active: form.active }
         );
         setServices((prev) =>
           prev.map((s) =>
             s.id === editTarget.id
-              ? { ...updated, status: updated.active ? "ACTIVE" : "INACTIVE" }
+              ? {
+                  ...updated,
+                  coverageAreas: savedAreas,
+                  status: updated.active ? "ACTIVE" : "INACTIVE",
+                }
               : s
           )
         );
         toast.success("Đã cập nhật dịch vụ");
       } else {
-        const created = await orgOpsHttpApi.createService(
-          organizationId,
-          payload
-        );
+        let saved = await orgOpsHttpApi.createService(organizationId, {
+          ...basePayload,
+          active: false,
+        });
+        let savedAreas: OrgServiceCoverageArea[] = [];
+        if (areasPayload.length > 0) {
+          savedAreas = await orgOpsHttpApi.replaceServiceCoverage(
+            organizationId,
+            saved.id,
+            areasPayload
+          );
+        }
+        if (form.active) {
+          saved = await orgOpsHttpApi.updateService(organizationId, saved.id, {
+            ...basePayload,
+            active: true,
+          });
+        }
         setServices((prev) => [
-          { ...created, status: created.active ? "ACTIVE" : "INACTIVE" },
+          {
+            ...saved,
+            coverageAreas: savedAreas,
+            status: saved.active ? "ACTIVE" : "INACTIVE",
+          },
           ...prev,
         ]);
         toast.success("Đã tạo dịch vụ mới");
@@ -261,6 +441,7 @@ export function OrgServicesPanel({
             <TableRow>
               <TableHead>Tên dịch vụ</TableHead>
               <TableHead>Danh mục</TableHead>
+              <TableHead>Phạm vi phục vụ</TableHead>
               <TableHead>Thời lượng dự kiến</TableHead>
               <TableHead>Giá niêm yết</TableHead>
               <TableHead>Trạng thái</TableHead>
@@ -282,7 +463,19 @@ export function OrgServicesPanel({
                   ) : null}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {s.category}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>{getServiceCategoryLabel(s.category)}</span>
+                    {getServiceCategoryMeta(s.category)?.requiresQualification ? (
+                      <Badge variant="outline" className="text-[11px] font-normal">
+                        Cần chứng chỉ
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {(s.coverageAreas ?? []).filter((c) => c.active !== false).length > 0
+                    ? `${(s.coverageAreas ?? []).filter((c) => c.active !== false).length} khu vực`
+                    : "Chưa cấu hình"}
                 </TableCell>
                 <TableCell className="text-muted-foreground tabular-nums">
                   {s.estimatedDurationMinutes
@@ -367,12 +560,20 @@ export function OrgServicesPanel({
               required
               error={errors.category}
             >
-              <Input
+              <NativeSelect
                 id="svc-cat"
                 value={form.category}
-                onChange={(e) => updateField("category", e.target.value)}
+                onChange={(e) => handleCategoryChange(e.target.value)}
                 required
-              />
+              >
+                {V01_SERVICE_CATEGORIES.map((cat) => (
+                  <NativeSelectOption key={cat.code} value={cat.code}>
+                    {cat.requiresQualification
+                      ? `${cat.label} (Cần chứng chỉ)`
+                      : cat.label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
             </FormField>
             <FormField label="Trạng thái hiển thị" htmlFor="svc-active">
               <NativeSelect
@@ -387,6 +588,21 @@ export function OrgServicesPanel({
               </NativeSelect>
             </FormField>
           </div>
+          {selectedCategoryMeta?.requiresQualification ? (
+            <Alert>
+              <AlertDescription>
+                Danh mục <strong>{selectedCategoryMeta.label}</strong> thuộc nhóm
+                rủi ro cao: cần nộp và được Admin xác minh tại{" "}
+                <Link
+                  href="/org/settings#qualifications"
+                  className="font-medium underline underline-offset-2 hover:text-primary"
+                >
+                  Cài đặt tổ chức → Chứng chỉ chuyên môn
+                </Link>{" "}
+                trước khi bật trạng thái <strong>Đang hoạt động</strong>.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <FormField
             label="Mô tả quy trình"
             htmlFor="svc-desc"
@@ -403,10 +619,25 @@ export function OrgServicesPanel({
         </FormSection>
 
         <FormSection
-          title="Định giá & Thời lượng dự kiến"
-          description="Cơ sở báo giá ban đầu và phân bổ khung lịch cho kỹ thuật viên."
+          title="Định giá & Bảo hành tay nghề"
+          description="Cơ sở báo giá, phí khảo sát, thời gian bảo hành và phân bổ khung lịch."
         >
           <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Hình thức báo giá" htmlFor="svc-price-type">
+              <NativeSelect
+                id="svc-price-type"
+                value={form.priceType}
+                onChange={(e) =>
+                  updateField(
+                    "priceType",
+                    e.target.value as ServiceFormValues["priceType"]
+                  )
+                }
+              >
+                <NativeSelectOption value="FIXED">Giá niêm yết cố định</NativeSelectOption>
+                <NativeSelectOption value="QUOTE_REQUIRED">Khảo sát & báo giá</NativeSelectOption>
+              </NativeSelect>
+            </FormField>
             <FormField
               label="Giá niêm yết (VNĐ)"
               htmlFor="svc-price"
@@ -419,6 +650,65 @@ export function OrgServicesPanel({
                 min={0}
                 value={form.basePrice}
                 onChange={(e) => updateField("basePrice", e.target.value)}
+                required
+              />
+            </FormField>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField
+              label="Phí khảo sát (VNĐ)"
+              htmlFor="svc-inspection-fee"
+              error={errors.inspectionFee}
+            >
+              <Input
+                id="svc-inspection-fee"
+                type="number"
+                min={0}
+                value={form.inspectionFee}
+                onChange={(e) => updateField("inspectionFee", e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="Chính sách phí khảo sát"
+              htmlFor="svc-inspection-policy"
+            >
+              <NativeSelect
+                id="svc-inspection-policy"
+                value={form.inspectionFeePolicy}
+                onChange={(e) =>
+                  updateField(
+                    "inspectionFeePolicy",
+                    e.target.value as ServiceFormValues["inspectionFeePolicy"]
+                  )
+                }
+              >
+                <NativeSelectOption value="NO_FEE">Miễn phí khảo sát</NativeSelectOption>
+                <NativeSelectOption value="CREDIT_FULL">Khấu trừ 100% vào hóa đơn</NativeSelectOption>
+                <NativeSelectOption value="NON_CREDITABLE">Không khấu trừ</NativeSelectOption>
+              </NativeSelect>
+            </FormField>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField
+              label="Bảo hành tay nghề (ngày)"
+              htmlFor="svc-warranty"
+              required
+              hint={
+                selectedCategoryMeta
+                  ? `Trong khoảng ${selectedCategoryMeta.minDays} – ${selectedCategoryMeta.maxDays} ngày`
+                  : undefined
+              }
+              error={errors.workmanshipDurationDays}
+            >
+              <Input
+                id="svc-warranty"
+                type="number"
+                min={selectedCategoryMeta?.minDays ?? 0}
+                max={selectedCategoryMeta?.maxDays ?? 90}
+                value={form.workmanshipDurationDays}
+                onChange={(e) =>
+                  updateField("workmanshipDurationDays", e.target.value)
+                }
                 required
               />
             </FormField>
@@ -438,6 +728,90 @@ export function OrgServicesPanel({
               />
             </FormField>
           </div>
+        </FormSection>
+        <FormSection
+          title="Khu vực phục vụ"
+          description="Cần ít nhất 1 khu vực (Tỉnh/Thành phố hoặc Phường/Xã) để kích hoạt dịch vụ."
+        >
+          <FormField
+            label="Thêm khu vực phục vụ"
+            htmlFor="svc-coverage-location"
+            error={errors.coverageAreas}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="sm:w-44">
+                <NativeSelect
+                  id="svc-coverage-level"
+                  aria-label="Cấp khu vực phục vụ"
+                  value={coverageLevelDraft}
+                  onChange={(e) => {
+                    setCoverageLevelDraft(
+                      e.target.value === "WARD" ? "WARD" : "PROVINCE"
+                    );
+                    setCoverageLocationDraft("");
+                  }}
+                >
+                  <NativeSelectOption value="PROVINCE">
+                    Tỉnh / Thành phố
+                  </NativeSelectOption>
+                  <NativeSelectOption value="WARD">Phường / Xã</NativeSelectOption>
+                </NativeSelect>
+              </div>
+              <div className="flex-1">
+                {coverageLevelDraft === "PROVINCE" ? (
+                  <ProvinceSelect
+                    id="svc-coverage-location"
+                    value={coverageLocationDraft}
+                    onChange={setCoverageLocationDraft}
+                  />
+                ) : (
+                  <Input
+                    id="svc-coverage-location"
+                    value={coverageLocationDraft}
+                    onChange={(e) => setCoverageLocationDraft(e.target.value)}
+                    placeholder="VD: Phường Bến Nghé hoặc WARD_001"
+                  />
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddCoverageArea}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Thêm khu vực
+              </Button>
+            </div>
+          </FormField>
+
+          {form.coverageAreas.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {form.coverageAreas.map((area) => (
+                <Badge
+                  key={`${area.level}:${area.locationCode}`}
+                  variant="secondary"
+                  className="gap-1.5 pr-1.5"
+                >
+                  <span>
+                    {area.locationCode} ({area.level})
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Xóa khu vực ${area.locationCode}`}
+                    onClick={() => handleRemoveCoverageArea(area)}
+                    className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Chưa có khu vực phục vụ nào được chọn.
+            </p>
+          )}
         </FormSection>
       </FormDrawer>
     </div>

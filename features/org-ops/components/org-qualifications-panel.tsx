@@ -4,9 +4,15 @@ import * as React from "react";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
+import {
+  parseUploadedMediaRefs,
+  serializeUploadedMediaRefs,
+} from "@/shared/api/media-upload";
+import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { FileUploader } from "@/shared/ui/file-uploader";
 
@@ -40,14 +46,16 @@ export function OrgQualificationsPanel({
 }) {
   const [items, setItems] = React.useState<CategoryQualificationItem[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [submittingCategory, setSubmittingCategory] = React.useState<
     string | null
   >(null);
+  const [removingKey, setRemovingKey] = React.useState<string | null>(null);
 
   const loadQualifications = React.useCallback(async () => {
-    setLoading(true);
     try {
+      setLoadError(null);
       const res = await fetch("/api/gateway/providers/current/qualifications", {
         cache: "no-store",
         headers: { "X-Organization-Id": organizationId },
@@ -60,20 +68,27 @@ export function OrgQualificationsPanel({
         nextDrafts[q.category] = q.evidenceRefs ?? "";
       }
       setDrafts(nextDrafts);
-    } catch {
-      // Keep empty state on initial load failure
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : "Không thể tải danh sách chứng chỉ chuyên môn."
+      );
     } finally {
       setLoading(false);
     }
   }, [organizationId]);
 
   React.useEffect(() => {
-    void loadQualifications();
+    void Promise.resolve().then(loadQualifications);
   }, [loadQualifications]);
 
-  async function handleSubmit(category: string) {
-    const evidenceRefs = (drafts[category] ?? "").trim();
-    if (!evidenceRefs) {
+  async function persistQualification(
+    category: string,
+    evidenceRefs: string
+  ) {
+    const trimmed = evidenceRefs.trim();
+    if (!trimmed) {
       toast.error("Vui lòng tải lên ít nhất 1 chứng chỉ chuyên môn.");
       return;
     }
@@ -87,7 +102,7 @@ export function OrgQualificationsPanel({
             "Content-Type": "application/json",
             "X-Organization-Id": organizationId,
           },
-          body: JSON.stringify({ evidenceRefs }),
+          body: JSON.stringify({ evidenceRefs: trimmed }),
         }
       );
       const json = (await res.json()) as ApiResponse<CategoryQualificationItem>;
@@ -98,7 +113,11 @@ export function OrgQualificationsPanel({
           ? prev.map((it) => (it.category === category ? updated : it))
           : [...prev, updated];
       });
-      toast.success("Đã gửi chứng chỉ chuyên môn để Admin xét duyệt.");
+      setDrafts((prev) => ({
+        ...prev,
+        [category]: updated.evidenceRefs ?? trimmed,
+      }));
+      toast.success("Đã lưu và gửi chứng chỉ chuyên môn để Admin xét duyệt.");
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể gửi chứng chỉ."
@@ -108,8 +127,60 @@ export function OrgQualificationsPanel({
     }
   }
 
+  async function handleSubmit(category: string) {
+    await persistQualification(category, drafts[category] ?? "");
+  }
+
+  async function handleRemoveFile(category: string, objectKey: string) {
+    const currentRefs = parseUploadedMediaRefs(drafts[category]);
+    const remaining = currentRefs.filter((item) => item.objectKey !== objectKey);
+    const nextSerialized = serializeUploadedMediaRefs(remaining);
+
+    setRemovingKey(objectKey);
+    setSubmittingCategory(category);
+    try {
+      if (remaining.length > 0) {
+        await persistQualification(category, nextSerialized);
+      } else {
+        const res = await fetch(
+          `/api/gateway/providers/current/qualifications/${encodeURIComponent(category)}`,
+          {
+            method: "DELETE",
+            headers: {
+              "X-Organization-Id": organizationId,
+            },
+          }
+        );
+        if (!res.ok && res.status !== 204) {
+          const json = (await res.json().catch(() => null)) as ApiResponse<unknown> | null;
+          throw new Error(json?.message || "Không thể xóa chứng chỉ.");
+        }
+        setItems((prev) => prev.filter((it) => it.category !== category));
+        setDrafts((prev) => ({ ...prev, [category]: "" }));
+        toast.success("Đã xóa chứng chỉ khỏi danh mục.");
+      }
+
+      if (!/^https?:\/\//i.test(objectKey)) {
+        void fetch(
+          `/api/gateway/organizations/${encodeURIComponent(organizationId)}/evidence?objectKey=${encodeURIComponent(objectKey)}`,
+          {
+            method: "DELETE",
+            headers: { "x-homecare-scope": "personal" },
+          }
+        ).catch(() => {});
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa tệp chứng chỉ."
+      );
+    } finally {
+      setRemovingKey(null);
+      setSubmittingCategory(null);
+    }
+  }
+
   return (
-    <Card className="p-5 space-y-4">
+    <Card id="qualifications" className="p-5 space-y-4 scroll-mt-20">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-foreground">
@@ -117,8 +188,19 @@ export function OrgQualificationsPanel({
         </h2>
       </div>
 
+      {loadError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      ) : null}
+
       {loading ? (
-        <div className="grid gap-4 lg:grid-cols-3" aria-label="Đang tải chứng chỉ">
+        <div
+          className="grid gap-4 lg:grid-cols-3"
+          role="status"
+          aria-busy="true"
+          aria-label="Đang tải chứng chỉ"
+        >
           {HIGH_RISK_CATEGORIES.map((category) => (
             <div key={category.code} className="flex flex-col gap-3 rounded-lg border border-border p-4">
               <Skeleton className="h-4 w-2/3" />
@@ -167,15 +249,32 @@ export function OrgQualificationsPanel({
 
                   <FileUploader
                     value={draft}
-                    onChange={(next) =>
-                      setDrafts((prev) => ({ ...prev, [cat.code]: next }))
-                    }
+                    showFileList={false}
+                    onChange={(next) => {
+                      setDrafts((prev) => ({ ...prev, [cat.code]: next }));
+                      if (next.trim()) {
+                        void persistQualification(cat.code, next);
+                      }
+                    }}
                     presignUrl="/api/gateway/organizations/evidence/presign"
                     documentType={cat.code}
                     inputLabel={`Chọn chứng chỉ ${cat.label}`}
                     buttonLabel="Tải chứng chỉ"
                     disabled={isSaving}
                   />
+
+                  <div className="pt-1">
+                    <EvidenceDocumentsList
+                      organizationId={organizationId}
+                      value={draft}
+                      emptyText="Chưa có tệp chứng chỉ nào."
+                      onRemove={(objectKey) =>
+                        void handleRemoveFile(cat.code, objectKey)
+                      }
+                      removingKey={removingKey}
+                      disabled={isSaving}
+                    />
+                  </div>
                 </div>
 
                 <Button

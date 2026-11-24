@@ -18,6 +18,7 @@ import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -479,9 +480,25 @@ export function OrgTechniciansPanel({
             Khung giờ đã đăng ký ({schedules.length})
           </h3>
           {loadingSchedules ? (
-            <p className="text-xs text-muted-foreground">
-              Đang tải lịch làm việc...
-            </p>
+            <div
+              className="space-y-2"
+              role="status"
+              aria-label="Đang tải lịch làm việc"
+              aria-busy="true"
+            >
+              {[0, 1].map((row) => (
+                <div
+                  key={row}
+                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                >
+                  <div className="space-y-2">
+                    <Skeleton className="h-3.5 w-48 max-w-full" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <Skeleton className="h-8 w-8 rounded-md" />
+                </div>
+              ))}
+            </div>
           ) : schedules.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Chưa có khung giờ làm việc nào.

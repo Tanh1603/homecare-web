@@ -30,6 +30,7 @@ import {
 } from "@/shared/ui/input-otp";
 import { Label } from "@/shared/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Email không hợp lệ"),
@@ -548,8 +549,30 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4 py-12">
       <React.Suspense
         fallback={
-          <Card className="w-full max-w-md p-8 text-center text-sm text-muted-foreground">
-            Đang tải biểu mẫu đăng nhập...
+          <Card className="w-full max-w-md shadow-sm" aria-busy="true">
+            <CardHeader className="items-center space-y-3">
+              <Skeleton className="h-12 w-12 rounded-xl" />
+              <Skeleton className="h-6 w-56 max-w-full" />
+              <Skeleton className="h-4 w-full max-w-72" />
+            </CardHeader>
+            <CardContent
+              className="space-y-5"
+              role="status"
+              aria-label="Đang tải biểu mẫu đăng nhập"
+            >
+              <Skeleton className="h-10 w-full" />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <Skeleton className="h-10 w-full" />
+              </div>
+            </CardContent>
           </Card>
         }
       >

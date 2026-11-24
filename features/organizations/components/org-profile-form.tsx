@@ -4,9 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  COMPANY_TAX_CODE_REGEX,
   formatOrgRoleLabel,
+  HOUSEHOLD_PERSONAL_ID_REGEX,
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPE_LABELS,
+  TAX_CODE_FIELD_CONFIG,
   updateOrganizationSchema,
   type LegalEntityType,
   type Organization,
@@ -144,6 +147,23 @@ export function OrgProfileForm({
   async function handleUpgradeSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isOwner || !orgSnapshot) return;
+    const trimmedTaxCode = upgradeTaxCode.trim();
+    if (
+      targetLegalType === "COMPANY" &&
+      !COMPANY_TAX_CODE_REGEX.test(trimmedTaxCode)
+    ) {
+      toast.error("Doanh nghiệp bắt buộc mã số thuế gồm đúng 10 chữ số.");
+      return;
+    }
+    if (
+      targetLegalType === "HOUSEHOLD_BUSINESS" &&
+      !HOUSEHOLD_PERSONAL_ID_REGEX.test(trimmedTaxCode)
+    ) {
+      toast.error(
+        "Hộ kinh doanh bắt buộc số định danh cá nhân (CCCD) gồm đúng 12 chữ số."
+      );
+      return;
+    }
     if (!upgradeEvidenceRefs.trim()) {
       toast.error("Vui lòng tải lên tài liệu chứng minh pháp lý mới.");
       return;
@@ -154,7 +174,7 @@ export function OrgProfileForm({
         organizationId,
         {
           targetLegalEntityType: targetLegalType,
-          taxCode: upgradeTaxCode,
+          taxCode: trimmedTaxCode,
           identityEvidenceRefs: upgradeEvidenceRefs,
         },
         orgSnapshot.version
@@ -394,15 +414,19 @@ export function OrgProfileForm({
                 </FormField>
 
                 <FormField
-                  label="Mã số thuế mới (nếu có)"
+                  label={TAX_CODE_FIELD_CONFIG[targetLegalType].label}
                   htmlFor="upgrade-tax-code"
+                  required={TAX_CODE_FIELD_CONFIG[targetLegalType].required}
+                  hint={TAX_CODE_FIELD_CONFIG[targetLegalType].hint}
                 >
                   <Input
                     id="upgrade-tax-code"
                     value={upgradeTaxCode}
                     disabled={upgrading}
                     onChange={(e) => setUpgradeTaxCode(e.target.value)}
-                    placeholder="VD: 0312345678"
+                    placeholder={
+                      TAX_CODE_FIELD_CONFIG[targetLegalType].placeholder
+                    }
                   />
                 </FormField>
               </div>

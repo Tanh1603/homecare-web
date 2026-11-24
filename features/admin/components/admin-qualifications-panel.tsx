@@ -112,7 +112,12 @@ export function AdminQualificationsPanel({
       </div>
       <div className="p-5">
         {loading ? (
-          <div className="flex flex-col gap-3" aria-label="Đang tải chứng chỉ">
+          <div
+            className="flex flex-col gap-3"
+            role="status"
+            aria-busy="true"
+            aria-label="Đang tải chứng chỉ"
+          >
             {[0, 1, 2].map((row) => (
               <div key={row} className="flex flex-col gap-3 rounded-lg border border-border p-4">
                 <Skeleton className="h-4 w-1/3" />

@@ -163,7 +163,7 @@ export function OrganizationActionDialogs({
       <Dialog
         open={dialog?.kind === "REJECT"}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <DialogContent>
@@ -181,7 +181,7 @@ export function OrganizationActionDialogs({
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={busy}>
+              <Button variant="outline" onClick={handleClose} disabled={busy}>
                 Hủy
               </Button>
               <Button
@@ -199,7 +199,7 @@ export function OrganizationActionDialogs({
       <Dialog
         open={dialog?.kind === "SUSPEND"}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <DialogContent>
@@ -221,7 +221,7 @@ export function OrganizationActionDialogs({
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={busy}>
+              <Button variant="outline" onClick={handleClose} disabled={busy}>
                 Hủy
               </Button>
               <Button
@@ -239,7 +239,7 @@ export function OrganizationActionDialogs({
       <Dialog
         open={dialog?.kind === "BAN"}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <DialogContent>
@@ -267,7 +267,7 @@ export function OrganizationActionDialogs({
               Gắn cờ can thiệp an toàn cho các đơn đặt lịch đang xử lý
             </label>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={busy}>
+              <Button variant="outline" onClick={handleClose} disabled={busy}>
                 Hủy
               </Button>
               <Button
@@ -285,7 +285,7 @@ export function OrganizationActionDialogs({
       <Dialog
         open={dialog?.kind === "APPEAL"}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <DialogContent>
@@ -314,7 +314,7 @@ export function OrganizationActionDialogs({
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={busy}>
+              <Button variant="outline" onClick={handleClose} disabled={busy}>
                 Đóng
               </Button>
               <Button
@@ -338,7 +338,7 @@ export function OrganizationActionDialogs({
       <Dialog
         open={dialog?.kind === "APPROVE_UPGRADE"}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <DialogContent>
@@ -362,7 +362,7 @@ export function OrganizationActionDialogs({
               ?
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={busy}>
+              <Button variant="outline" onClick={handleClose} disabled={busy}>
                 Hủy
               </Button>
               <Button disabled={busy} onClick={handleApproveUpgrade}>

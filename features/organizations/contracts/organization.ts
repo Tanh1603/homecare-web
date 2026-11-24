@@ -327,7 +327,14 @@ export type AddOrganizationMemberInput = z.infer<
 
 export const updateOrganizationSchema = z.object({
   name: z.string().trim().min(2, "Tên tổ chức tối thiểu 2 ký tự"),
-  phone: z.string().trim().min(9, "Số điện thoại không hợp lệ"),
+  phone: z
+    .string()
+    .trim()
+    .transform((value) => normalizeVietnamesePhone(value))
+    .refine(
+      (value) => VN_PHONE_REGEX.test(value),
+      "Số điện thoại Việt Nam không hợp lệ (VD: 0901234567 hoặc +84901234567)"
+    ),
   city: z.string().trim().min(2, "Vui lòng nhập tỉnh/thành phố"),
   address: z.string().trim().min(5, "Địa chỉ tối thiểu 5 ký tự"),
   description: z.string().trim().optional(),

@@ -17,9 +17,11 @@ describe("ServerPagination", () => {
     expect(screen.getByText(/Trang/).parentElement?.textContent).toContain(
       "Trang 2 / 4 (73 bản ghi)"
     );
-    expect(screen.getByRole("link", { name: "Trước" }).getAttribute("href"))
-      .toBe("/org/returns?status=REQUESTED&page=1");
-    expect(screen.getByRole("link", { name: "Sau" }).getAttribute("href"))
-      .toBe("/org/returns?status=REQUESTED&page=3");
+    expect(
+      screen.getByRole("link", { name: "Trang trước" }).getAttribute("href")
+    ).toBe("/org/returns?status=REQUESTED&page=1");
+    expect(
+      screen.getByRole("link", { name: "Trang sau" }).getAttribute("href")
+    ).toBe("/org/returns?status=REQUESTED&page=3");
   });
 });

@@ -177,9 +177,13 @@ export const organizationsHttpAdapter = {
           "x-homecare-scope": "personal",
         },
         body:
-          action === "reject"
+          action === "reject" || action === "suspend"
             ? JSON.stringify({
-                reason: input.reason?.trim() || "Hồ sơ chưa đạt yêu cầu",
+                reason:
+                  input.reason?.trim() ||
+                  (action === "reject"
+                    ? "Hồ sơ chưa đạt yêu cầu"
+                    : "Tạm ngưng theo quyết định quản trị"),
               })
             : undefined,
       }

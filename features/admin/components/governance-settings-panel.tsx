@@ -10,6 +10,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -89,10 +90,9 @@ export function GovernanceSettingsPanel() {
   const [error, setError] = React.useState<string | null>(null);
 
   const loadSettings = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const list = await organizationsHttpAdapter.listGovernanceSettings();
+      setError(null);
       const sorted = [...list].sort((a, b) =>
         a.settingKey.localeCompare(b.settingKey)
       );
@@ -114,7 +114,7 @@ export function GovernanceSettingsPanel() {
   }, []);
 
   React.useEffect(() => {
-    void loadSettings();
+    void Promise.resolve().then(loadSettings);
   }, [loadSettings]);
 
   const filteredItems = React.useMemo(() => {
@@ -251,12 +251,31 @@ export function GovernanceSettingsPanel() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
+                <TableRow aria-busy="true">
                   <TableCell
                     colSpan={4}
-                    className="py-8 text-center text-sm text-muted-foreground"
+                    className="space-y-3 py-4"
+                    role="status"
+                    aria-label="Đang tải cấu hình quản trị"
                   >
-                    Đang tải cấu hình quản trị...
+                    {[0, 1, 2].map((row) => (
+                      <div
+                        key={row}
+                        className="grid grid-cols-[2.6fr_1fr_1.6fr_1fr] items-center gap-3 py-2"
+                      >
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-2/3" />
+                          <Skeleton className="h-3 w-full max-w-56" />
+                          <Skeleton className="h-3 w-28" />
+                        </div>
+                        <Skeleton className="h-6 w-20 rounded-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-3 w-24" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                      </div>
+                    ))}
                   </TableCell>
                 </TableRow>
               ) : filteredItems.length === 0 ? (

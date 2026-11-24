@@ -48,6 +48,7 @@ export interface FileUploaderProps {
   formatLabel?: string;
   disabled?: boolean;
   error?: string;
+  showFileList?: boolean;
   onAuthRequired?: () => void;
 }
 
@@ -68,6 +69,7 @@ export function FileUploader({
   formatLabel = `PDF, JPG, PNG, WEBP · Tối đa ${maxSizeMb}MB/tệp`,
   disabled,
   error,
+  showFileList = true,
   onAuthRequired,
 }: FileUploaderProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -223,7 +225,7 @@ export function FileUploader({
         </div>
       ) : null}
 
-      {items.length > 0 ? (
+      {showFileList && items.length > 0 ? (
         <AttachmentGroup aria-label="Danh sách tệp đã tải lên">
           {items.map((item) => {
             const previewUrl = previewByKey[item.objectKey];

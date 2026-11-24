@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   Ban,
@@ -29,12 +29,13 @@ import {
   OrganizationActionDialogs,
   type OrganizationDialogState,
 } from "@/features/admin/components/organization-action-dialogs";
-import { DataTable } from "@/shared/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { ContextInspector } from "@/shared/ui/context-inspector";
 import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
+import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { cn, formatDateTime } from "@/shared/lib/utils";
 
@@ -51,24 +52,74 @@ const FILTER_TABS: { value: StatusFilter; label: string }[] = [
 
 export function OrganizationsTable({
   initialData,
+  initialStatus = "ALL",
+  initialQuery = "",
+  initialSortBy = "createdAt",
+  initialSortDir = "desc",
 }: {
   initialData: Organization[];
+  initialStatus?: StatusFilter;
+  initialQuery?: string;
+  initialSortBy?: string;
+  initialSortDir?: "asc" | "desc";
 }) {
-  const [rows, setRows] = React.useState<Organization[]>(initialData);
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
+  const router = useRouter();
+  const [rowOverrides, setRowOverrides] = React.useState<
+    Record<string, Organization>
+  >({});
+  const [prevInitialQuery, setPrevInitialQuery] = React.useState(initialQuery);
+  const [query, setQuery] = React.useState(initialQuery);
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery);
+    setQuery(initialQuery);
+  }
   const [dialog, setDialog] = React.useState<OrganizationDialogState>(null);
   const [detailTarget, setDetailTarget] = React.useState<Organization | null>(
     null
   );
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
-  const filteredRows = React.useMemo(() => {
-    if (statusFilter === "ALL") return rows;
-    return rows.filter((r) => r.status === statusFilter);
-  }, [rows, statusFilter]);
+  const rows = React.useMemo(
+    () => initialData.map((r) => rowOverrides[r.id] ?? r),
+    [initialData, rowOverrides]
+  );
+
+  const navigateWithParams = React.useCallback(
+    (next: {
+      status?: StatusFilter;
+      q?: string;
+      sortBy?: string;
+      sortDir?: "asc" | "desc";
+    }) => {
+      const params = new URLSearchParams();
+      const targetStatus = next.status ?? initialStatus;
+      const targetQuery = (next.q ?? query).trim();
+      const targetSortBy = next.sortBy ?? initialSortBy;
+      const targetSortDir = next.sortDir ?? initialSortDir;
+
+      if (targetStatus !== "ALL") params.set("status", targetStatus);
+      if (targetQuery) params.set("q", targetQuery);
+      if (targetSortBy !== "createdAt") params.set("sortBy", targetSortBy);
+      if (targetSortDir !== "desc") params.set("sortDir", targetSortDir);
+      params.set("page", "1");
+      router.replace(`/admin/organizations?${params.toString()}`);
+    },
+    [initialSortBy, initialSortDir, initialStatus, query, router]
+  );
+
+  React.useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed === initialQuery.trim()) return;
+    const timer = window.setTimeout(() => {
+      navigateWithParams({ q: trimmed });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [initialQuery, navigateWithParams, query]);
+
+  const sortValue = `${initialSortBy}:${initialSortDir}`;
 
   function replaceRow(updated: Organization) {
-    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    setRowOverrides((prev) => ({ ...prev, [updated.id]: updated }));
     setDetailTarget((prev) => (prev && prev.id === updated.id ? updated : prev));
   }
 
@@ -92,7 +143,7 @@ export function OrganizationsTable({
     }
   }
 
-  const columns: LegacyColumnDef<Organization, unknown>[] = [
+  const columns: DataTableColumn<Organization>[] = [
     {
       accessorKey: "name",
       header: "Tổ chức",
@@ -200,14 +251,16 @@ export function OrganizationsTable({
                       id: "approve",
                       label: "Phê duyệt hồ sơ",
                       icon: CheckCircle2,
-                      hidden: org.status === "APPROVED",
+                      hidden: org.status !== "PENDING",
                       onSelect: () => handleQuickApprove(org),
                     },
                     {
                       id: "approve-upgrade",
                       label: "Duyệt nâng cấp pháp nhân",
                       icon: ShieldCheck,
-                      hidden: !org.pendingLegalEntityUpgrade,
+                      hidden:
+                        !org.pendingLegalEntityUpgrade ||
+                        org.status !== "APPROVED",
                       onSelect: () =>
                         setDialog({ kind: "APPROVE_UPGRADE", org }),
                     },
@@ -270,16 +323,12 @@ export function OrganizationsTable({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-1.5">
         {FILTER_TABS.map((tab) => {
-          const count =
-            tab.value === "ALL"
-              ? rows.length
-              : rows.filter((r) => r.status === tab.value).length;
-          const active = statusFilter === tab.value;
+          const active = initialStatus === tab.value;
           return (
             <button
               key={tab.value}
               type="button"
-              onClick={() => setStatusFilter(tab.value)}
+              onClick={() => navigateWithParams({ status: tab.value })}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
                 active
@@ -288,17 +337,51 @@ export function OrganizationsTable({
               )}
             >
               <span>{tab.label}</span>
-              <span className="tabular-nums opacity-75">({count})</span>
             </button>
           );
         })}
       </div>
 
       <DataTable
-        data={filteredRows}
+        data={rows}
         columns={columns}
-        searchPlaceholder="Tìm tên tổ chức, MST, thành phố..."
+        serverSide
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Tìm tên tổ chức, MST, SĐT, thành phố..."
         emptyMessage="Không có hồ sơ tổ chức nào khớp bộ lọc."
+        toolbarSlot={
+          <div className="w-48">
+            <NativeSelect
+              aria-label="Sắp xếp tổ chức"
+              value={sortValue}
+              onChange={(e) => {
+                const [nextSortBy, nextSortDir] = e.target.value.split(":");
+                navigateWithParams({
+                  sortBy: nextSortBy,
+                  sortDir: nextSortDir === "asc" ? "asc" : "desc",
+                });
+              }}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="createdAt:desc">
+                Mới đăng ký nhất
+              </NativeSelectOption>
+              <NativeSelectOption value="createdAt:asc">
+                Đăng ký cũ nhất
+              </NativeSelectOption>
+              <NativeSelectOption value="name:asc">
+                Tên tổ chức (A → Z)
+              </NativeSelectOption>
+              <NativeSelectOption value="name:desc">
+                Tên tổ chức (Z → A)
+              </NativeSelectOption>
+              <NativeSelectOption value="status:asc">
+                Theo trạng thái
+              </NativeSelectOption>
+            </NativeSelect>
+          </div>
+        }
       />
 
       <ContextInspector

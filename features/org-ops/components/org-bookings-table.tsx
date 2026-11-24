@@ -24,6 +24,7 @@ import { Label } from "@/shared/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -355,9 +356,13 @@ export function OrgBookingsTable({
             <div className="space-y-1.5">
               <Label htmlFor="assign-tech-select">Chọn kỹ thuật viên</Label>
               {loadingTechs ? (
-                <p className="text-xs text-muted-foreground">
-                  Đang tải danh sách kỹ thuật viên...
-                </p>
+                <div
+                  role="status"
+                  aria-label="Đang tải danh sách kỹ thuật viên"
+                  aria-busy="true"
+                >
+                  <Skeleton className="h-10 w-full" />
+                </div>
               ) : technicians.length === 0 ? (
                 <p className="text-xs text-destructive">
                   Không có kỹ thuật viên khả dụng khác.
@@ -494,9 +499,29 @@ export function OrgBookingsTable({
                 Tiến độ & minh chứng công việc
               </h3>
               {loadingDetail ? (
-                <p className="text-xs text-muted-foreground">
-                  Đang tải tiến độ...
-                </p>
+                <div
+                  className="space-y-2"
+                  role="status"
+                  aria-label="Đang tải tiến độ"
+                  aria-busy="true"
+                >
+                  {[0, 1].map((row) => (
+                    <div
+                      key={row}
+                      className="space-y-3 rounded-lg border border-border p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <Skeleton className="h-5 w-24 rounded-full" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                      <Skeleton className="h-3 w-4/5" />
+                      <div className="flex gap-2">
+                        <Skeleton className="h-16 w-16 rounded-md" />
+                        <Skeleton className="h-16 w-16 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (detailTarget.workUpdates?.length ?? 0) === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   Chưa có cập nhật công việc nào.

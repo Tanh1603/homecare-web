@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
@@ -42,49 +43,103 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function AdminUsersTable({
   initialUsers,
+  initialQuery = "",
+  initialRole = "ALL",
+  initialStatus = "ALL",
+  initialSortBy = "createdAt",
+  initialSortDir = "desc",
 }: {
   initialUsers: AdminUserItem[];
+  initialQuery?: string;
+  initialRole?: RoleFilter;
+  initialStatus?: StatusFilter;
+  initialSortBy?: string;
+  initialSortDir?: "asc" | "desc";
 }) {
   const router = useRouter();
-  const [users, setUsers] = React.useState<AdminUserItem[]>(initialUsers);
-  const [query, setQuery] = React.useState("");
-  const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("ALL");
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
+  const [statusOverrides, setStatusOverrides] = React.useState<
+    Record<string, AdminUserItem["status"]>
+  >({});
+  const [prevInitialQuery, setPrevInitialQuery] = React.useState(initialQuery);
+  const [query, setQuery] = React.useState(initialQuery);
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery);
+    setQuery(initialQuery);
+  }
   const [inspectedUser, setInspectedUser] = React.useState<AdminUserItem | null>(null);
   const [confirmTarget, setConfirmTarget] = React.useState<{
     user: AdminUserItem;
     action: "SUSPEND" | "REACTIVATE";
   } | null>(null);
+  const [suspendReason, setSuspendReason] = React.useState("");
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
-  const filteredUsers = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return users.filter((u) => {
-      if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
-      if (statusFilter !== "ALL" && u.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        u.fullName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.id.toLowerCase().includes(q)
-      );
-    });
-  }, [users, query, roleFilter, statusFilter]);
+  function closeConfirmDialog() {
+    setConfirmTarget(null);
+    setSuspendReason("");
+  }
+
+  const users = React.useMemo(
+    () =>
+      initialUsers.map((u) =>
+        statusOverrides[u.id] ? { ...u, status: statusOverrides[u.id] } : u
+      ),
+    [initialUsers, statusOverrides]
+  );
+
+  const navigateWithParams = React.useCallback(
+    (next: {
+      q?: string;
+      role?: RoleFilter;
+      status?: StatusFilter;
+      sortBy?: string;
+      sortDir?: "asc" | "desc";
+    }) => {
+      const params = new URLSearchParams();
+      const targetQuery = (next.q ?? query).trim();
+      const targetRole = next.role ?? initialRole;
+      const targetStatus = next.status ?? initialStatus;
+      const targetSortBy = next.sortBy ?? initialSortBy;
+      const targetSortDir = next.sortDir ?? initialSortDir;
+
+      if (targetQuery) params.set("q", targetQuery);
+      if (targetRole !== "ALL") params.set("role", targetRole);
+      if (targetStatus !== "ALL") params.set("status", targetStatus);
+      if (targetSortBy !== "createdAt") params.set("sortBy", targetSortBy);
+      if (targetSortDir !== "desc") params.set("sortDir", targetSortDir);
+      params.set("page", "1");
+      router.replace(`/admin/users?${params.toString()}`);
+    },
+    [initialRole, initialSortBy, initialSortDir, initialStatus, query, router]
+  );
+
+  React.useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed === initialQuery.trim()) return;
+    const timer = window.setTimeout(() => {
+      navigateWithParams({ q: trimmed });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [initialQuery, navigateWithParams, query]);
+
+  const sortValue = `${initialSortBy}:${initialSortDir}`;
 
   async function handleConfirm() {
     if (!confirmTarget) return;
     const { user, action } = confirmTarget;
+    if (action === "SUSPEND" && !suspendReason.trim()) {
+      toast.error("Vui lòng nhập lý do tạm ngưng tài khoản.");
+      return;
+    }
     setBusyId(user.id);
     try {
       const updated =
         action === "SUSPEND"
-          ? await adminHttpApi.suspendUser(user.id)
+          ? await adminHttpApi.suspendUser(user.id, suspendReason.trim())
           : await adminHttpApi.reactivateUser(user.id);
       const nextStatus =
         updated?.status ?? (action === "SUSPEND" ? "SUSPENDED" : "ACTIVE");
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, status: nextStatus } : u))
-      );
+      setStatusOverrides((prev) => ({ ...prev, [user.id]: nextStatus }));
       setInspectedUser((prev) =>
         prev && prev.id === user.id ? { ...prev, status: nextStatus } : prev
       );
@@ -93,7 +148,7 @@ export function AdminUsersTable({
           ? `Đã tạm ngưng tài khoản ${user.email}`
           : `Đã kích hoạt lại tài khoản ${user.email}`
       );
-      setConfirmTarget(null);
+      closeConfirmDialog();
       router.refresh();
     } catch (err) {
       toast.error(
@@ -122,8 +177,10 @@ export function AdminUsersTable({
           <div className="w-40">
             <NativeSelect
               aria-label="Lọc theo vai trò"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+              value={initialRole}
+              onChange={(e) =>
+                navigateWithParams({ role: e.target.value as RoleFilter })
+              }
               className="text-xs font-medium"
             >
               <NativeSelectOption value="ALL">Tất cả vai trò</NativeSelectOption>
@@ -136,13 +193,35 @@ export function AdminUsersTable({
           <div className="w-40">
             <NativeSelect
               aria-label="Lọc theo trạng thái"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              value={initialStatus}
+              onChange={(e) =>
+                navigateWithParams({ status: e.target.value as StatusFilter })
+              }
               className="text-xs font-medium"
             >
               <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
               <NativeSelectOption value="ACTIVE">Hoạt động</NativeSelectOption>
               <NativeSelectOption value="SUSPENDED">Tạm ngưng</NativeSelectOption>
+            </NativeSelect>
+          </div>
+
+          <div className="w-44">
+            <NativeSelect
+              aria-label="Sắp xếp người dùng"
+              value={sortValue}
+              onChange={(e) => {
+                const [nextSortBy, nextSortDir] = e.target.value.split(":");
+                navigateWithParams({
+                  sortBy: nextSortBy,
+                  sortDir: nextSortDir === "asc" ? "asc" : "desc",
+                });
+              }}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="createdAt:desc">Mới tạo nhất</NativeSelectOption>
+              <NativeSelectOption value="createdAt:asc">Tạo cũ nhất</NativeSelectOption>
+              <NativeSelectOption value="fullName:asc">Họ tên (A → Z)</NativeSelectOption>
+              <NativeSelectOption value="email:asc">Email (A → Z)</NativeSelectOption>
             </NativeSelect>
           </div>
         </div>
@@ -161,7 +240,7 @@ export function AdminUsersTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.length === 0 ? (
+            {users.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -171,7 +250,7 @@ export function AdminUsersTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((u) => {
+              users.map((u) => {
                 const isSuspended = u.status === "SUSPENDED";
                 return (
                   <TableRow key={u.id}>
@@ -322,7 +401,7 @@ export function AdminUsersTable({
       <Dialog
         open={Boolean(confirmTarget)}
         onOpenChange={(open) => {
-          if (!open) setConfirmTarget(null);
+          if (!open) closeConfirmDialog();
         }}
       >
         <DialogContent>
@@ -339,11 +418,26 @@ export function AdminUsersTable({
                 ? `Tài khoản "${confirmTarget?.user.email}" sẽ bị thu hồi phiên và không thể đăng nhập.`
                 : `Tài khoản "${confirmTarget?.user.email}" sẽ được phép đăng nhập trở lại.`}
             </p>
+            {confirmTarget?.action === "SUSPEND" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="user-suspend-reason">
+                  Lý do tạm ngưng (bắt buộc)
+                </Label>
+                <Input
+                  id="user-suspend-reason"
+                  value={suspendReason}
+                  onChange={(e) => setSuspendReason(e.target.value)}
+                  placeholder="VD: Vi phạm điều khoản sử dụng hoặc gian lận"
+                  disabled={Boolean(busyId)}
+                />
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setConfirmTarget(null)}
+                onClick={closeConfirmDialog}
+                disabled={Boolean(busyId)}
               >
                 Hủy
               </Button>
@@ -354,7 +448,10 @@ export function AdminUsersTable({
                     ? "destructive"
                     : "default"
                 }
-                disabled={Boolean(busyId)}
+                disabled={
+                  Boolean(busyId) ||
+                  (confirmTarget?.action === "SUSPEND" && !suspendReason.trim())
+                }
                 onClick={handleConfirm}
               >
                 {busyId ? "Đang xử lý..." : "Xác nhận"}
