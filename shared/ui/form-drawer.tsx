@@ -5,6 +5,13 @@ import { AlertCircle, AlertTriangle, ChevronDown, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/shared/ui/sheet";
 
 const DRAWER_WIDTHS = {
   md: "sm:max-w-md",
@@ -57,8 +64,6 @@ export function FormDrawer({
   children: React.ReactNode;
 }) {
   const [confirmDiscard, setConfirmDiscard] = React.useState(false);
-  const asideRef = React.useRef<HTMLElement | null>(null);
-  const previousFocusRef = React.useRef<HTMLElement | null>(null);
 
   const requestClose = React.useCallback(() => {
     if (saving) return;
@@ -69,36 +74,6 @@ export function FormDrawer({
     setConfirmDiscard(false);
     onClose();
   }, [isDirty, onClose, saving]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-
-    const timer = window.setTimeout(() => {
-      const firstInput = asideRef.current?.querySelector<HTMLElement>(
-        "input:not([disabled]), select:not([disabled]), textarea:not([disabled])"
-      );
-      firstInput?.focus();
-    }, 30);
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        requestClose();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("keydown", onKeyDown);
-      previousFocusRef.current?.focus?.();
-    };
-  }, [open, requestClose]);
-
-  if (!open) return null;
 
   const defaultFooter = (
     <div className="flex items-center justify-end gap-2">
@@ -176,32 +151,29 @@ export function FormDrawer({
   );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) requestClose();
+      }}
     >
-      <div
-        className="fixed inset-0 bg-slate-950/45 backdrop-blur-[1px] hc-animate-backdrop-in"
-        onClick={requestClose}
-      />
-      <aside
-        ref={asideRef}
+      <SheetContent
+        side="right"
+        showCloseButton={false}
         className={cn(
-          "relative z-10 flex h-[100dvh] w-full flex-col bg-surface border-l border-border shadow-2xl overflow-hidden hc-animate-drawer-in",
+          "flex h-dvh w-full flex-col gap-0 overflow-hidden border-l border-border bg-surface p-0 shadow-2xl sm:max-w-none",
           DRAWER_WIDTHS[size]
         )}
       >
-        <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
+        <SheetHeader className="flex min-h-14 shrink-0 flex-row items-center justify-between gap-3 border-b border-border px-5 py-3 text-left">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-foreground">
+            <SheetTitle className="truncate text-base">
               {title}
-            </h2>
+            </SheetTitle>
             {description ? (
-              <p className="truncate text-xs text-muted-foreground">
+              <SheetDescription className="truncate text-xs">
                 {description}
-              </p>
+              </SheetDescription>
             ) : null}
           </div>
           <button
@@ -212,7 +184,7 @@ export function FormDrawer({
           >
             <X className="h-4 w-4" />
           </button>
-        </div>
+        </SheetHeader>
 
         {onSubmit ? (
           <form
@@ -229,8 +201,8 @@ export function FormDrawer({
             {bodyAndFooter}
           </div>
         )}
-      </aside>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

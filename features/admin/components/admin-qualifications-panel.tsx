@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
 import { Badge } from "@/shared/ui/badge";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { Button } from "@/shared/ui/button";
 import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { Input } from "@/shared/ui/input";
@@ -111,7 +112,15 @@ export function AdminQualificationsPanel({
       </div>
       <div className="p-5">
         {loading ? (
-          <p className="text-xs text-muted-foreground">Đang tải chứng chỉ...</p>
+          <div className="flex flex-col gap-3" aria-label="Đang tải chứng chỉ">
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
         ) : items.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             Tổ chức chưa nộp chứng chỉ chuyên môn nào.

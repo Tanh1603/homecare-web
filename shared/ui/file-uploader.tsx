@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import Image from "next/image";
+import { FileText, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { GatewayApiError } from "@/shared/api/api-envelope";
 import {
@@ -11,6 +12,17 @@ import {
   type UploadedMediaRef,
 } from "@/shared/api/media-upload";
 import { Button } from "@/shared/ui/button";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/shared/ui/attachment";
+import { Progress } from "@/shared/ui/progress";
 
 const DEFAULT_MIME_TYPES = [
   "application/pdf",
@@ -59,9 +71,20 @@ export function FileUploader({
   onAuthRequired,
 }: FileUploaderProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const previewUrls = React.useRef(new Map<string, string>());
+  const [previewByKey, setPreviewByKey] = React.useState<Record<string, string>>({});
   const [uploading, setUploading] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(0);
   const items = React.useMemo(() => parseUploadedMediaRefs(value), [value]);
   const maxBytes = maxSizeMb * 1024 * 1024;
+
+  React.useEffect(
+    () => () => {
+      for (const url of previewUrls.current.values()) URL.revokeObjectURL(url);
+      previewUrls.current.clear();
+    },
+    []
+  );
 
   async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -80,10 +103,24 @@ export function FileUploader({
     }
 
     setUploading(true);
+    setUploadProgress(0);
+    const selectedPreviews = files.map((file) =>
+      file.type.startsWith("image/") ? URL.createObjectURL(file) : null
+    );
     try {
-      const uploader =
-        uploadFile ??
-        ((file: File) => {
+      const fileProgress = files.map(() => 0);
+      const uploaded = await Promise.all(
+        files.map((file, index) => {
+          const updateProgress = (percentage: number) => {
+            fileProgress[index] = percentage;
+            setUploadProgress(
+              Math.round(fileProgress.reduce((sum, item) => sum + item, 0) / files.length)
+            );
+          };
+          if (uploadFile) return uploadFile(file).then((result) => {
+            updateProgress(100);
+            return result;
+          });
           if (!presignUrl) {
             throw new Error("Thiếu cấu hình presignUrl cho FileUploader.");
           }
@@ -92,10 +129,29 @@ export function FileUploader({
             file,
             documentType,
             scope,
+            onProgress: updateProgress,
           });
-        });
-
-      const uploaded = await Promise.all(files.map(uploader));
+        })
+      );
+      if (!multiple) {
+        for (const url of previewUrls.current.values()) URL.revokeObjectURL(url);
+        previewUrls.current.clear();
+        setPreviewByKey({});
+      }
+      const nextPreviews: Record<string, string> = {};
+      uploaded.forEach((item, index) => {
+        const previewUrl = selectedPreviews[index];
+        if (previewUrl) {
+          previewUrls.current.set(item.objectKey, previewUrl);
+          nextPreviews[item.objectKey] = previewUrl;
+          selectedPreviews[index] = null;
+        }
+      });
+      if (Object.keys(nextPreviews).length > 0) {
+        setPreviewByKey((current) =>
+          multiple ? { ...current, ...nextPreviews } : nextPreviews
+        );
+      }
       const next = multiple ? [...items, ...uploaded] : uploaded.slice(0, 1);
       onChange(serializeUploadedMediaRefs(next));
       toast.success(`Đã tải lên ${uploaded.length} tệp.`);
@@ -109,11 +165,23 @@ export function FileUploader({
         );
       }
     } finally {
+      selectedPreviews.forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
       setUploading(false);
+      setUploadProgress(0);
     }
   }
 
   function handleRemove(objectKey: string) {
+    const previewUrl = previewUrls.current.get(objectKey);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrls.current.delete(objectKey);
+    setPreviewByKey((current) => {
+      const next = { ...current };
+      delete next[objectKey];
+      return next;
+    });
     const next = items.filter((item) => item.objectKey !== objectKey);
     onChange(serializeUploadedMediaRefs(next));
   }
@@ -140,42 +208,66 @@ export function FileUploader({
           disabled={disabled || uploading}
           onClick={() => inputRef.current?.click()}
         >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+          {!uploading ? (
             <Upload className="h-4 w-4" />
-          )}
+          ) : null}
           {uploading ? "Đang tải lên..." : buttonLabel}
         </Button>
         <span className="text-xs text-muted-foreground">{formatLabel}</span>
       </div>
 
+      {uploading ? (
+        <div className="flex items-center gap-3" role="status" aria-live="polite">
+          <Progress value={uploadProgress} aria-label={`Tiến độ tải lên ${uploadProgress}%`} />
+          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{uploadProgress}%</span>
+        </div>
+      ) : null}
+
       {items.length > 0 ? (
-        <ul className="space-y-2" aria-label="Danh sách tệp đã tải lên">
-          {items.map((item) => (
-            <li
-              key={item.objectKey}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs"
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-primary" />
-                <span className="truncate font-medium text-foreground">
-                  {item.fileName}
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={disabled || uploading}
-                aria-label={`Xóa tệp ${item.fileName}`}
-                onClick={() => handleRemove(item.objectKey)}
+        <AttachmentGroup aria-label="Danh sách tệp đã tải lên">
+          {items.map((item) => {
+            const previewUrl = previewByKey[item.objectKey];
+            return (
+              <Attachment
+                key={item.objectKey}
+                size="sm"
+                className="max-w-full rounded-lg border-border bg-muted/30"
               >
-                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <AttachmentMedia variant={previewUrl ? "image" : "icon"}>
+                  {previewUrl ? (
+                    <Image
+                      src={previewUrl}
+                      alt=""
+                      width={48}
+                      height={48}
+                      unoptimized
+                    />
+                  ) : (
+                    <FileText aria-hidden="true" />
+                  )}
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{item.fileName}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {item.contentType ?? "Tệp đã tải lên"}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={disabled || uploading}
+                    aria-label={`Xóa tệp ${item.fileName}`}
+                    onClick={() => handleRemove(item.objectKey)}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            );
+          })}
+        </AttachmentGroup>
       ) : null}
 
       {error ? (

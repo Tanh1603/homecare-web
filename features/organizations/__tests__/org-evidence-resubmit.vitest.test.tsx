@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { registerOrganizationSchema } from "@/features/organizations/contracts/organization";
 import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import { OrgResubmitForm } from "@/features/organizations/components/org-resubmit-form";
@@ -13,12 +13,17 @@ vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
 describe("Organization evidence presign upload & resubmit", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("requires identityEvidenceRefs in registerOrganizationSchema", () => {
@@ -153,6 +158,49 @@ describe("Organization evidence presign upload & resubmit", () => {
         }),
         2
       );
+    });
+  });
+
+  it("clears old identityEvidenceRefs when legalEntityType changes in OrgResubmitForm", async () => {
+    const existingRefs = JSON.stringify([
+      {
+        documentType: "COMPANY",
+        fileName: "gpkd-cu.pdf",
+        objectKey: "organizations/u1/gpkd-cu.pdf",
+        bucket: "organization-evidence",
+      },
+    ]);
+
+    render(
+      <OrgResubmitForm
+        organization={{
+          id: "org-1",
+          name: "Dien Lanh Pro",
+          type: "SERVICE",
+          legalEntityType: "COMPANY",
+          status: "REJECTED",
+          resubmitCount: 1,
+          taxCode: "0109283746",
+          phone: "0901234567",
+          city: "TP. HCM",
+          address: "123 Nguyen Trai",
+          description: "Mo ta",
+          identityEvidenceRefs: existingRefs,
+          version: 2,
+          createdAt: "2026-11-23T00:00:00Z",
+          updatedAt: "2026-11-23T00:00:00Z",
+        }}
+      />
+    );
+
+    expect(screen.getByText("gpkd-cu.pdf")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/Loại hình pháp lý/i), {
+      target: { value: "INDIVIDUAL" },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("gpkd-cu.pdf")).toBeNull();
     });
   });
 });

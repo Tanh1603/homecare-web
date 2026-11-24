@@ -44,8 +44,15 @@ export async function uploadFileViaPresignedUrl(options: {
   file: File;
   documentType?: string;
   scope?: "personal" | "org";
+  onProgress?: (percentage: number) => void;
 }): Promise<UploadedMediaRef> {
-  const { presignUrl, file, documentType = "MEDIA", scope = "personal" } = options;
+  const {
+    presignUrl,
+    file,
+    documentType = "MEDIA",
+    scope = "personal",
+    onProgress,
+  } = options;
   const presigned = await requestPresignedUpload(
     presignUrl,
     {
@@ -55,16 +62,26 @@ export async function uploadFileViaPresignedUrl(options: {
     },
     scope
   );
-  const uploadRes = await fetch(presigned.uploadUrl, {
-    method: presigned.method || "PUT",
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-    },
-    body: file,
+  await new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(presigned.method || "PUT", presigned.uploadUrl);
+    request.setRequestHeader(
+      "Content-Type",
+      file.type || "application/octet-stream"
+    );
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`Tải tệp "${file.name}" thất bại (${request.status}).`));
+    };
+    request.onerror = () => reject(new Error(`Không thể tải tệp "${file.name}" lên.`));
+    request.onabort = () => reject(new Error(`Đã hủy tải tệp "${file.name}".`));
+    request.send(file);
   });
-  if (!uploadRes.ok) {
-    throw new Error(`Tải tệp "${file.name}" thất bại (${uploadRes.status}).`);
-  }
   return {
     documentType,
     fileName: file.name,

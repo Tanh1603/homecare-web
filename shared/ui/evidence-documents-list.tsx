@@ -7,7 +7,16 @@ import { LEGAL_ENTITY_TYPE_LABELS } from "@/features/organizations/contracts/org
 import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
 import { parseUploadedMediaRefs } from "@/shared/api/media-upload";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/shared/ui/attachment";
 
 export function EvidenceDocumentsList({
   value,
@@ -57,7 +66,7 @@ export function EvidenceDocumentsList({
   }
 
   return (
-    <ul className="space-y-2">
+    <AttachmentGroup aria-label="Danh sách tài liệu đã tải lên">
       {items.map((item) => {
         const typeLabel =
           LEGAL_ENTITY_TYPE_LABELS[
@@ -67,45 +76,35 @@ export function EvidenceDocumentsList({
         const isOpening = openingKey === item.objectKey;
 
         return (
-          <li
+          <Attachment
             key={`${item.bucket}-${item.objectKey}`}
-            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-secondary/70 px-3 py-2 text-xs"
+            size="sm"
+            className="max-w-full rounded-lg border-border bg-surface-secondary/70"
           >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <FileText
-                className="h-4 w-4 shrink-0 text-primary"
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="truncate font-medium text-foreground">
-                  {item.fileName}
-                </p>
-                {item.contentType ? (
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {item.contentType}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
+            <AttachmentMedia>
+              <FileText aria-hidden="true" />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{item.fileName}</AttachmentTitle>
+              <AttachmentDescription>
+                {item.contentType ?? "Tệp đính kèm"}
+              </AttachmentDescription>
+            </AttachmentContent>
+            <AttachmentActions>
               {typeLabel ? (
                 <Badge variant="outline" className="text-[11px]">
                   {typeLabel}
                 </Badge>
               ) : null}
               {isUrl ? (
-                <a
-                  href={item.objectKey}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-medium text-primary hover:underline underline-offset-2"
-                >
+                <AttachmentAction asChild size="sm" variant="ghost">
+                  <a href={item.objectKey} target="_blank" rel="noreferrer">
                   Xem
                   <ExternalLink className="h-3 w-3" />
-                </a>
+                  </a>
+                </AttachmentAction>
               ) : organizationId ? (
-                <Button
+                <AttachmentAction
                   type="button"
                   variant="ghost"
                   size="sm"
@@ -119,12 +118,12 @@ export function EvidenceDocumentsList({
                     <ExternalLink className="h-3 w-3" />
                   )}
                   Xem
-                </Button>
+                </AttachmentAction>
               ) : null}
-            </div>
-          </li>
+            </AttachmentActions>
+          </Attachment>
         );
       })}
-    </ul>
+    </AttachmentGroup>
   );
 }

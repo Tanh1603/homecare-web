@@ -1,25 +1,27 @@
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
 import { organizationsApi } from "@/features/organizations/api";
+import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import {
   LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
+  TAX_CODE_FIELD_CONFIG,
   resubmitOrganizationSchema,
+  type LegalEntityType,
   type Organization,
   type ResubmitOrganizationInput,
 } from "@/features/organizations/contracts/organization";
-import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import { Button } from "@/shared/ui/button";
 import { FormField } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
 
 export function OrgResubmitForm({
   organization,
@@ -43,9 +45,10 @@ export function OrgResubmitForm({
     },
   });
 
-  const evidenceValue = form.watch("identityEvidenceRefs");
-  const cityValue = form.watch("city");
-  const legalEntityType = form.watch("legalEntityType");
+  const [legalEntityType, cityValue, evidenceValue] = useWatch({
+    control: form.control,
+    name: ["legalEntityType", "city", "identityEvidenceRefs"],
+  });
 
   async function onSubmit(values: ResubmitOrganizationInput) {
     setSubmitting(true);
@@ -53,13 +56,13 @@ export function OrgResubmitForm({
       await organizationsApi.resubmit(
         organization.id,
         values,
-        organization.version
+        organization.version,
       );
       toast.success("Đã gửi lại hồ sơ tổ chức. Trạng thái chuyển về PENDING.");
       router.refresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể gửi lại hồ sơ."
+        err instanceof Error ? err.message : "Không thể gửi lại hồ sơ.",
       );
     } finally {
       setSubmitting(false);
@@ -106,7 +109,23 @@ export function OrgResubmitForm({
           <NativeSelect
             id="resubmit-legal-entity"
             disabled={submitting}
-            {...form.register("legalEntityType")}
+            value={legalEntityType}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+              const nextType = e.target.value as LegalEntityType;
+              if (nextType !== legalEntityType) {
+                form.setValue("legalEntityType", nextType, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                form.setValue("identityEvidenceRefs", "", {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                toast.info(
+                  "Đã đổi loại hình pháp lý. Vui lòng tải lại tài liệu định danh phù hợp.",
+                );
+              }
+            }}
           >
             {LEGAL_ENTITY_TYPES.map((entityType) => (
               <NativeSelectOption key={entityType} value={entityType}>
@@ -117,13 +136,17 @@ export function OrgResubmitForm({
         </FormField>
 
         <FormField
-          label="Mã số thuế"
+          label={TAX_CODE_FIELD_CONFIG[legalEntityType].label}
           htmlFor="resubmit-tax-code"
+          required={TAX_CODE_FIELD_CONFIG[legalEntityType].required}
+          hint={TAX_CODE_FIELD_CONFIG[legalEntityType].hint}
           error={form.formState.errors.taxCode?.message}
         >
           <Input
             id="resubmit-tax-code"
             disabled={submitting}
+            aria-invalid={Boolean(form.formState.errors.taxCode) || undefined}
+            placeholder={TAX_CODE_FIELD_CONFIG[legalEntityType].placeholder}
             {...form.register("taxCode")}
           />
         </FormField>

@@ -1,24 +1,17 @@
 "use client";
 
-import * as React from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Info, ShieldCheck } from "lucide-react";
+import { organizationsApi } from "@/features/organizations/api";
+import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import {
   LEGAL_ENTITY_TYPES,
   LEGAL_ENTITY_TYPE_LABELS,
   ORGANIZATION_TYPES,
-  V01_REGISTERABLE_ORGANIZATION_TYPES,
   ORGANIZATION_TYPE_LABELS,
+  TAX_CODE_FIELD_CONFIG,
+  V01_REGISTERABLE_ORGANIZATION_TYPES,
   registerOrganizationSchema,
   type RegisterOrganizationInput,
 } from "@/features/organizations/contracts/organization";
-import { organizationsApi } from "@/features/organizations/api";
-import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import { GatewayApiError } from "@/shared/api/api-envelope";
 import { createSupabaseBrowserClient } from "@/shared/lib/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
@@ -29,13 +22,21 @@ import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
 import { ThemeToggle } from "@/shared/ui/theme-toggle";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeft, CheckCircle2, Info, ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
 
 export default function RegisterOrganizationPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [requiresLogin, setRequiresLogin] = React.useState(false);
   const [currentUserEmail, setCurrentUserEmail] = React.useState<string | null>(
-    null
+    null,
   );
   const [authChecked, setAuthChecked] = React.useState(false);
 
@@ -79,9 +80,10 @@ export default function RegisterOrganizationPage() {
     },
   });
 
-  const legalEntityType = form.watch("legalEntityType");
-  const cityValue = form.watch("city");
-  const identityEvidenceRefs = form.watch("identityEvidenceRefs");
+  const [legalEntityType, cityValue, identityEvidenceRefs] = useWatch({
+    control: form.control,
+    name: ["legalEntityType", "city", "identityEvidenceRefs"],
+  });
 
   async function onSubmit(values: RegisterOrganizationInput) {
     setSubmitting(true);
@@ -89,17 +91,19 @@ export default function RegisterOrganizationPage() {
     try {
       await organizationsApi.register(values);
       toast.success(
-        "Đã nộp hồ sơ đăng ký! Tổ chức của bạn đang ở trạng thái Chờ duyệt."
+        "Đã nộp hồ sơ đăng ký! Tổ chức của bạn đang ở trạng thái Chờ duyệt.",
       );
       router.push("/org/status");
       router.refresh();
     } catch (err) {
       if (err instanceof GatewayApiError && err.status === 401) {
         setRequiresLogin(true);
-        toast.error("Bạn cần đăng nhập tài khoản HomeCare trước khi nộp hồ sơ.");
+        toast.error(
+          "Bạn cần đăng nhập tài khoản HomeCare trước khi nộp hồ sơ.",
+        );
       } else {
         toast.error(
-          err instanceof Error ? err.message : "Không thể gửi hồ sơ đăng ký"
+          err instanceof Error ? err.message : "Không thể gửi hồ sơ đăng ký",
         );
       }
     } finally {
@@ -144,7 +148,6 @@ export default function RegisterOrganizationPage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-
         {requiresLogin ? (
           <Alert variant="warning" className="mb-6">
             <Info />
@@ -211,7 +214,9 @@ export default function RegisterOrganizationPage() {
               >
                 <Input
                   id="name"
-                  aria-invalid={Boolean(form.formState.errors.name) || undefined}
+                  aria-invalid={
+                    Boolean(form.formState.errors.name) || undefined
+                  }
                   placeholder="VD: Điện Lạnh Bách Khoa Pro"
                   {...form.register("name")}
                 />
@@ -226,7 +231,9 @@ export default function RegisterOrganizationPage() {
               >
                 <NativeSelect
                   id="type"
-                  aria-invalid={Boolean(form.formState.errors.type) || undefined}
+                  aria-invalid={
+                    Boolean(form.formState.errors.type) || undefined
+                  }
                   {...form.register("type")}
                 >
                   {ORGANIZATION_TYPES.map((orgType) => {
@@ -276,21 +283,29 @@ export default function RegisterOrganizationPage() {
               >
                 <Input
                   id="phone"
-                  aria-invalid={Boolean(form.formState.errors.phone) || undefined}
+                  aria-invalid={
+                    Boolean(form.formState.errors.phone) || undefined
+                  }
                   placeholder="0901234567"
                   {...form.register("phone")}
                 />
               </FormField>
 
               <FormField
-                label="Mã số thuế"
+                label={TAX_CODE_FIELD_CONFIG[legalEntityType].label}
                 htmlFor="taxCode"
-                hint="Tùy chọn với cá nhân."
+                required={TAX_CODE_FIELD_CONFIG[legalEntityType].required}
+                hint={TAX_CODE_FIELD_CONFIG[legalEntityType].hint}
                 error={form.formState.errors.taxCode?.message}
               >
                 <Input
                   id="taxCode"
-                  placeholder="0109283746"
+                  aria-invalid={
+                    Boolean(form.formState.errors.taxCode) || undefined
+                  }
+                  placeholder={
+                    TAX_CODE_FIELD_CONFIG[legalEntityType].placeholder
+                  }
                   {...form.register("taxCode")}
                 />
               </FormField>
@@ -305,7 +320,9 @@ export default function RegisterOrganizationPage() {
                   id="city"
                   value={cityValue}
                   disabled={submitting}
-                  aria-invalid={Boolean(form.formState.errors.city) || undefined}
+                  aria-invalid={
+                    Boolean(form.formState.errors.city) || undefined
+                  }
                   onChange={(next) =>
                     form.setValue("city", next, {
                       shouldDirty: true,
@@ -334,7 +351,6 @@ export default function RegisterOrganizationPage() {
               <FormField
                 label="Giới thiệu năng lực"
                 htmlFor="description"
-                hint="Mô tả nhóm thiết bị chuyên môn, khu vực phục vụ và đội ngũ kỹ thuật."
                 className="sm:col-span-2"
               >
                 <Textarea
@@ -355,7 +371,8 @@ export default function RegisterOrganizationPage() {
                   Tài liệu chứng minh pháp lý
                 </h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Tải lên giấy phép hoặc định danh phù hợp với loại hình đã chọn.
+                  Tải lên giấy phép hoặc định danh phù hợp với loại hình đã
+                  chọn.
                 </p>
               </div>
 
@@ -385,7 +402,9 @@ export default function RegisterOrganizationPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span>2. Quản trị viên kiểm tra &amp; xác minh định danh</span>
+                    <span>
+                      2. Quản trị viên kiểm tra &amp; xác minh định danh
+                    </span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />

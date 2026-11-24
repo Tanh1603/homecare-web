@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { VIETNAM_PROVINCES, type ProvinceOption } from "@/shared/lib/provinces";
-import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/shared/ui/combobox";
 
 export function ProvinceSelect({
   id,
@@ -65,28 +72,38 @@ export function ProvinceSelect({
 
   const hasCurrentValue =
     !value || provinces.some((p) => p.name === value);
+  const options = React.useMemo(() => {
+    const available = hasCurrentValue || !value
+      ? provinces
+      : [...provinces, { code: `legacy-${value}`, name: value }];
+    return available;
+  }, [hasCurrentValue, provinces, value]);
 
   return (
-    <NativeSelect
-      id={id}
-      value={value}
+    <Combobox
+      items={options.map((province) => province.name)}
+      value={value || null}
+      onValueChange={(nextValue) => onChange(nextValue ?? "")}
       disabled={disabled}
-      required={required}
-      aria-invalid={ariaInvalid}
-      onChange={(e) => onChange(e.target.value)}
-      className={className}
     >
-      <NativeSelectOption value="" disabled>
-        Chọn Tỉnh / Thành phố
-      </NativeSelectOption>
-      {!hasCurrentValue ? (
-        <NativeSelectOption value={value}>{value}</NativeSelectOption>
-      ) : null}
-      {provinces.map((province) => (
-        <NativeSelectOption key={province.code} value={province.name}>
-          {province.name}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+      <ComboboxInput
+        id={id}
+        required={required}
+        disabled={disabled}
+        aria-invalid={ariaInvalid}
+        placeholder="Tìm tỉnh / thành phố"
+        className={className}
+      />
+      <ComboboxContent className="max-h-72">
+        <ComboboxEmpty>Không tìm thấy tỉnh / thành phố.</ComboboxEmpty>
+        <ComboboxList>
+          {(province: string) => (
+            <ComboboxItem key={province} value={province}>
+              {province}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

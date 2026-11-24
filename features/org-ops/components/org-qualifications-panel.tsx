@@ -7,6 +7,7 @@ import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { FileUploader } from "@/shared/ui/file-uploader";
 
 export interface CategoryQualificationItem {
@@ -117,7 +118,15 @@ export function OrgQualificationsPanel({
       </div>
 
       {loading ? (
-        <p className="text-xs text-muted-foreground">Đang tải chứng chỉ...</p>
+        <div className="grid gap-4 lg:grid-cols-3" aria-label="Đang tải chứng chỉ">
+          {HIGH_RISK_CATEGORIES.map((category) => (
+            <div key={category.code} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
           {HIGH_RISK_CATEGORIES.map((cat) => {

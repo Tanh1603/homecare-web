@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output:
+    process.env.NEXT_BUILD_STANDALONE === "true" ? "standalone" : undefined,
   turbopack: {
     rules: {
       "*.css": {

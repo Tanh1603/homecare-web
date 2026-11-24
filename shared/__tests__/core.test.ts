@@ -163,20 +163,82 @@ test("normalizeOrganization and normalizeMembership align Spring Boot fields", (
   assert.equal(legacyMembership.legalEntityType, null);
 });
 
-test("registerOrganizationSchema validates separated capability type, legalEntityType, and city", () => {
-  const valid = registerOrganizationSchema.safeParse({
+test("registerOrganizationSchema validates separated capability type, legalEntityType, city, phone, and taxCode", () => {
+  const validHousehold = registerOrganizationSchema.safeParse({
     name: "Trung Tâm Sửa Chữa An Phát",
     type: "SERVICE",
     legalEntityType: "HOUSEHOLD_BUSINESS",
-    taxCode: "",
-    phone: "0912345678",
+    taxCode: "001090012345",
+    phone: "0912 345 678",
     city: "Đà Nẵng",
     address: "15 Nguyễn Văn Linh, Hải Châu",
     description: "Chuyên điều hòa & máy giặt",
     identityEvidenceRefs:
       '[{"documentType":"HOUSEHOLD_BUSINESS","fileName":"hkd.pdf","objectKey":"org/hkd.pdf","bucket":"evidence"}]',
   });
-  assert.equal(valid.success, true);
+  assert.equal(validHousehold.success, true);
+  if (validHousehold.success) {
+    assert.equal(validHousehold.data.phone, "0912345678");
+  }
+
+  const companyMissingTaxCode = registerOrganizationSchema.safeParse({
+    name: "Công ty Điện Lạnh An Phát",
+    type: "SERVICE",
+    legalEntityType: "COMPANY",
+    taxCode: "",
+    phone: "02838221234",
+    city: "TP. Hồ Chí Minh",
+    address: "15 Nguyễn Văn Linh",
+    identityEvidenceRefs: '[{"documentType":"COMPANY","fileName":"dkkd.pdf","objectKey":"org/dkkd.pdf","bucket":"evidence"}]',
+  });
+  assert.equal(companyMissingTaxCode.success, false);
+
+  const companyValid10Digits = registerOrganizationSchema.safeParse({
+    name: "Công ty Điện Lạnh An Phát",
+    type: "SERVICE",
+    legalEntityType: "COMPANY",
+    taxCode: "0109283746",
+    phone: "02838221234",
+    city: "TP. Hồ Chí Minh",
+    address: "15 Nguyễn Văn Linh",
+    identityEvidenceRefs: '[{"documentType":"COMPANY","fileName":"dkkd.pdf","objectKey":"org/dkkd.pdf","bucket":"evidence"}]',
+  });
+  assert.equal(companyValid10Digits.success, true);
+
+  const householdWrong10Digits = registerOrganizationSchema.safeParse({
+    name: "Hộ Kinh Doanh An Phát",
+    type: "SERVICE",
+    legalEntityType: "HOUSEHOLD_BUSINESS",
+    taxCode: "0109283746",
+    phone: "0912345678",
+    city: "Đà Nẵng",
+    address: "15 Nguyễn Văn Linh",
+    identityEvidenceRefs: '[{"documentType":"HOUSEHOLD_BUSINESS","fileName":"hkd.pdf","objectKey":"org/hkd.pdf","bucket":"evidence"}]',
+  });
+  assert.equal(householdWrong10Digits.success, false);
+
+  const individualOptional = registerOrganizationSchema.safeParse({
+    name: "Nguyễn Văn An",
+    type: "SERVICE",
+    legalEntityType: "INDIVIDUAL",
+    taxCode: "",
+    phone: "+84912345678",
+    city: "Hà Nội",
+    address: "15 Cầu Giấy",
+    identityEvidenceRefs: '[{"documentType":"INDIVIDUAL","fileName":"cccd.pdf","objectKey":"org/cccd.pdf","bucket":"evidence"}]',
+  });
+  assert.equal(individualOptional.success, true);
+
+  const invalidPhone = registerOrganizationSchema.safeParse({
+    name: "Nguyễn Văn An",
+    type: "SERVICE",
+    legalEntityType: "INDIVIDUAL",
+    phone: "123456789",
+    city: "Hà Nội",
+    address: "15 Cầu Giấy",
+    identityEvidenceRefs: '[{"documentType":"INDIVIDUAL","fileName":"cccd.pdf","objectKey":"org/cccd.pdf","bucket":"evidence"}]',
+  });
+  assert.equal(invalidPhone.success, false);
 
   const invalidLegalAsCapability = registerOrganizationSchema.safeParse({
     name: "Trung Tâm Sửa Chữa An Phát",
