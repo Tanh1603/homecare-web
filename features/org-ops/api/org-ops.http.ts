@@ -382,15 +382,19 @@ export const orgOpsHttpApi = {
       }[];
       validUntil?: string;
       applyInspectionFeeCredit?: boolean;
+      supersedeReason?: string;
     }
   ): Promise<{
     id: string;
-    serviceRequestId: string;
+    serviceRequestId?: string | null;
+    bookingId?: string | null;
+    quoteKind?: "INITIAL" | "REVISED" | string;
     version: number;
     itemsTotal: number;
     inspectionFeePaid: number;
     inspectionFeeCredit: number;
     totalDueAfterCredit: number;
+    supersedeReason?: string | null;
     status: string;
   }> {
     const res = await fetch(
@@ -403,11 +407,56 @@ export const orgOpsHttpApi = {
     );
     const json = (await res.json()) as ApiResponse<{
       id: string;
-      serviceRequestId: string;
+      serviceRequestId?: string | null;
+      bookingId?: string | null;
+      quoteKind?: "INITIAL" | "REVISED" | string;
       version: number;
       itemsTotal: number;
       inspectionFeePaid: number;
       inspectionFeeCredit: number;
+      totalDueAfterCredit: number;
+      supersedeReason?: string | null;
+      status: string;
+    }>;
+    return unwrapApiResponse(json);
+  },
+
+  async issueRevisedQuotation(
+    organizationId: string,
+    bookingId: string,
+    input: {
+      items: {
+        type: "LABOR" | "MATERIAL" | "OTHER";
+        description: string;
+        quantity: number;
+        unitPrice: number;
+      }[];
+      revisionReason: string;
+      validUntil?: string;
+    }
+  ): Promise<{
+    id: string;
+    bookingId?: string | null;
+    quoteKind?: string;
+    version: number;
+    itemsTotal: number;
+    totalDueAfterCredit: number;
+    status: string;
+  }> {
+    const res = await fetch(
+      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/revised-quotations`,
+      {
+        method: "POST",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify(input),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<{
+      id: string;
+      bookingId?: string | null;
+      quoteKind?: string;
+      version: number;
+      itemsTotal: number;
       totalDueAfterCredit: number;
       status: string;
     }>;

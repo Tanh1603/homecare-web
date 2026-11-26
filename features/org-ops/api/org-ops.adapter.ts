@@ -109,6 +109,9 @@ export interface OrgServiceRequestItem {
   priceType: "FIXED" | "QUOTE_REQUIRED" | string;
   requiresOnsiteSurvey: boolean;
   inspectionFee: number;
+  inspectionFeePolicy?: "NO_FEE" | "CREDIT_FULL" | "NON_CREDITABLE" | string | null;
+  inspectionFeeWarningFlag?: boolean;
+  fallbackCount?: number;
   deviceId?: string | null;
   warrantyId?: string | null;
   warrantyStatus?: string | null;

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import {
   CalendarCheck,
+  FileText,
   LayoutDashboard,
   Package,
   RotateCcw,
@@ -23,6 +24,7 @@ const ORG_NAV_GROUPS: NavGroup[] = [
     defaultHref: "/org",
     items: [
       { href: "/org", label: "Tổng quan", icon: LayoutDashboard },
+      { href: "/org/requests", label: "Yêu cầu & Báo giá", icon: FileText },
       { href: "/org/bookings", label: "Đặt lịch dịch vụ", icon: CalendarCheck },
       { href: "/org/orders", label: "Đơn hàng linh kiện", icon: Package },
       { href: "/org/returns", label: "Trả hàng / Hoàn tiền", icon: RotateCcw },
