@@ -1,17 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="151 150 401 377" role="img" aria-labelledby="title desc">
-<title id="title">HomeCare</title>
-<desc id="desc">Logo HomeCare với biểu tượng mái nhà và chiếc lá màu xanh cùng chữ HomeCare màu xanh đậm.</desc>
-<defs>
-  <linearGradient id="homecare-mark" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
-    <stop offset="0" stop-color="#00c51d"/>
-    <stop offset="0.52" stop-color="#00a82a"/>
-    <stop offset="1" stop-color="#00652b"/>
-  </linearGradient>
-</defs>
-<!-- Mark and white symbol are vector paths. -->
-<g fill="url(#homecare-mark)" fill-rule="evenodd">
-<path d="M175 321L173 327L173 330L172 331L172 334L171 335L171 467L172 468L172 472L175 481L184 495L192 502L202 508L211 511L214 511L215 512L236 512L237 513L243 513L244 512L250 512L251 513L257 513L258 512L261 512L262 513L276 513L277 512L288 512L289 513L296 513L297 512L300 512L301 513L308 513L309 512L317 512L318 513L328 513L329 512L333 512L334 513L354 513L355 512L364 512L365 513L374 513L375 512L468 512L469 513L482 513L483 512L497 511L509 506L518 500L525 493L533 480L535 474L535 471L536 470L536 465L537 464L537 334L536 333L535 322L530 310L525 303L516 294L508 288L497 277L489 271L478 260L469 253L442 228L433 221L385 178L372 170L366 168L361 168L360 167L352 167L351 168L346 168L345 169L342 169L336 171L328 176L309 194L308 194L281 219L280 219L269 230L261 236L190 302L189 302L182 309Z"/>
-</g>
-<g fill="#ffffff" fill-rule="evenodd">
-<path d="M372 266L366 264L362 264L361 263L351 263L350 264L343 265L337 268L310 288L288 306L284 308L270 320L265 323L259 330L255 338L254 345L253 346L253 417L256 424L260 428L267 431L310 431L317 428L323 423L333 409L338 399L346 388L328 406L319 413L317 411L316 403L315 402L315 389L316 388L316 383L317 382L318 375L322 366L326 360L337 349L343 345L355 339L364 336L367 336L372 334L377 334L378 333L391 332L392 331L399 331L400 332L401 343L402 344L402 367L401 368L401 373L400 374L400 377L398 383L389 399L380 408L367 416L352 421L341 422L339 426L338 432L333 442L331 444L329 449L322 458L268 512L274 512L275 513L277 512L288 512L289 513L296 513L297 512L300 512L301 513L308 513L309 512L328 513L329 512L333 512L334 513L341 513L370 484L380 471L388 456L388 454L391 448L392 442L395 439L447 439L454 435L458 430L459 427L459 349L458 348L457 341L454 335L448 327L442 323L436 317L390 280L379 270Z"/>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="128 104 382 382" role="img" aria-labelledby="title desc">
+  <title id="title">HomeCare
+  </title>
+  <desc id="desc">
+    HomeCare HC monogram combining a rounded
+    house roof and a circular care symbol.
+  </desc>
+  <defs>
+    <linearGradient id="home-h" gradientUnits="userSpaceOnUse" x1="143" y1="215" x2="313" y2="441">
+      <stop offset="0" stop-color="#08BC3D"/>
+      <stop offset="1" stop-color="#007B4D"/>
+    </linearGradient>
+    <linearGradient id="roof" gradientUnits="userSpaceOnUse" x1="221" y1="158" x2="443" y2="268">
+      <stop offset="0" stop-color="#15CF38"/>
+      <stop offset="1" stop-color="#007345"/>
+    </linearGradient>
+    <linearGradient id="care-c" gradientUnits="userSpaceOnUse" x1="315" y1="340" x2="494" y2="441">
+      <stop offset="0" stop-color="#15C83D"/>
+      <stop offset="1" stop-color="#007743"/>
+    </linearGradient>
+    <linearGradient id="care-upper" gradientUnits="userSpaceOnUse" x1="402" y1="236" x2="402" y2="389">
+      <stop offset="0" stop-color="#0FC13B"/>
+      <stop offset="1" stop-color="#008449"/>
+    </linearGradient>
+  </defs>
+  <!-- Home: H monogram -->
+    <path fill="url(#home-h)" d="             M143 276             C143 252 155 239 177 226             L284 158             C302 146 320 145 338 158             L443 230             C461 242 471 254 477 268             C450 242 409 232 369 241             L325 213             Q315 205 306 213             L200 288             V318             H261             Q266 318 266 313             V297             C266 280 279 267 293 263             C306 259 313 266 313 282             V433             Q313 443 304 440             C282 434 264 416 264 392             V376             Q264 363 252 363             H200             V434             Q200 441 194 441             C164 441 143 418 143 390             Z"/>
+    <!-- Home: rounded roof -->
+      <path fill="url(#roof)" d="             M200 288             V264             C200 239 205 217 221 205             L284 158             C302 146 320 145 338 158             L443 230             C461 242 471 254 477 268             C450 242 409 232 369 241             L325 213             Q315 205 306 213             Z"/>
+      <!-- Care: C monogram -->
+        <path fill="url(#care-c)" d="             M493 312             H450             C440 295 423 285 402 285             C374 285 351 309 351 337             C351 365 374 389 402 389             C423 389 440 378 450 361             H494             C483 410 446 441 402 441             C352 441 311 395 311 337             C311 280 352 236 402 236             C447 236 483 267 493 312             Z"/>
+        <!-- Care: upper ribbon -->
+          <path fill="url(#care-upper)" d="             M493 312             H450             C440 295 423 285 402 285             C374 285 351 309 351 337             C351 365 374 389 402 389             C352 390 311 366 311 337             C311 280 352 236 402 236             C447 236 483 267 493 312             Z"/>
+        </svg>
