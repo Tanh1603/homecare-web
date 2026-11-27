@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Eye, UserCheck, XCircle } from "lucide-react";
+import { Eye, Scale, UserCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { disputesHttpApi } from "@/features/disputes/api/disputes.http";
+import { OrgDisputeResponseDrawer } from "@/features/disputes/components/org-dispute-response-drawer";
 import type { OrgBookingItem, OrgTechnicianItem } from "../api/org-ops.adapter";
 import {
   orgOpsHttpApi,
@@ -37,8 +39,17 @@ import { formatDateTime, formatShortId, formatVnd } from "@/shared/lib/utils";
 
 const TERMINAL_BOOKING_STATUSES = new Set([
   "COMPLETED",
+  "ACCEPTED",
+  "CUSTOMER_NO_SHOW",
+  "CLOSED_UNRESOLVED",
   "CANCELLED",
   "EXPIRED",
+]);
+
+const SAME_ORG_REASSIGN_STATUSES = new Set([
+  "WAITING_FOR_PARTS",
+  "REVISION_REQUESTED",
+  "IN_PROGRESS",
 ]);
 
 export function OrgBookingsTable({
@@ -67,6 +78,9 @@ export function OrgBookingsTable({
   const [detailTarget, setDetailTarget] =
     React.useState<BookingDetailDto | null>(null);
   const [loadingDetail, setLoadingDetail] = React.useState(false);
+  const [disputeBookingId, setDisputeBookingId] = React.useState<string | null>(
+    null
+  );
 
   async function openAssignDialog(b: OrgBookingItem) {
     setAssignTarget(b);
@@ -97,12 +111,19 @@ export function OrgBookingsTable({
     if (!assignTarget || !selectedTechId) return;
     setBusyId(assignTarget.id);
     try {
-      const updated = await orgOpsHttpApi.assignTechnician(
-        organizationId,
-        assignTarget.id,
-        { technicianId: selectedTechId, reason: assignReason },
-        assignTarget.version
-      );
+      const updated = SAME_ORG_REASSIGN_STATUSES.has(assignTarget.status)
+        ? await disputesHttpApi.orgReassignSameOrgTechnician(
+            organizationId,
+            assignTarget.id,
+            { technicianId: selectedTechId, note: assignReason || undefined },
+            assignTarget.version
+          )
+        : await orgOpsHttpApi.assignTechnician(
+            organizationId,
+            assignTarget.id,
+            { technicianId: selectedTechId, reason: assignReason },
+            assignTarget.version
+          );
       setBookings((prev) =>
         prev.map((b) =>
           b.id === assignTarget.id
@@ -225,6 +246,7 @@ export function OrgBookingsTable({
   return (
     <>
       <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -242,7 +264,11 @@ export function OrgBookingsTable({
           <TableBody>
             {bookings.map((b) => {
               const canAssign =
-                b.status === "REQUESTED" || b.status === "ASSIGNED";
+                b.status === "REQUESTED" ||
+                b.status === "ASSIGNED" ||
+                SAME_ORG_REASSIGN_STATUSES.has(b.status);
+              const canRespondDispute =
+                b.status === "DISPUTED" || b.status === "ACCEPTED";
               const canCancel = !TERMINAL_BOOKING_STATUSES.has(b.status);
               return (
                 <TableRow key={b.id}>
@@ -293,12 +319,20 @@ export function OrgBookingsTable({
                             {
                               id: "assign",
                               label:
-                                b.status === "ASSIGNED"
+                                b.status === "ASSIGNED" ||
+                                SAME_ORG_REASSIGN_STATUSES.has(b.status)
                                   ? "Đổi kỹ thuật viên"
                                   : "Điều phối kỹ thuật viên",
                               icon: UserCheck,
                               hidden: !canAssign,
                               onSelect: () => openAssignDialog(b),
+                            },
+                            {
+                              id: "dispute-response",
+                              label: "Phản hồi tranh chấp",
+                              icon: Scale,
+                              hidden: !canRespondDispute,
+                              onSelect: () => setDisputeBookingId(b.id),
                             },
                           ],
                         },
@@ -326,7 +360,16 @@ export function OrgBookingsTable({
             })}
           </TableBody>
         </Table>
+        </div>
       </Card>
+
+      <OrgDisputeResponseDrawer
+        organizationId={organizationId}
+        bookingId={disputeBookingId}
+        open={Boolean(disputeBookingId)}
+        onClose={() => setDisputeBookingId(null)}
+        onSubmitted={() => router.refresh()}
+      />
 
       <Dialog
         open={Boolean(assignTarget)}
@@ -337,7 +380,8 @@ export function OrgBookingsTable({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {assignTarget?.status === "ASSIGNED"
+              {assignTarget?.status === "ASSIGNED" ||
+              (assignTarget ? SAME_ORG_REASSIGN_STATUSES.has(assignTarget.status) : false)
                 ? "Đổi kỹ thuật viên"
                 : "Điều phối kỹ thuật viên"}
             </DialogTitle>

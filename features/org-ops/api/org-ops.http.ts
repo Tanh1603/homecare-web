@@ -1,5 +1,6 @@
 import {
   extractPageItems,
+  GatewayApiError,
   unwrapApiResponse,
   type ApiResponse,
   type PageResponse,
@@ -19,10 +20,185 @@ import type {
 export interface ScheduleWindowItem {
   id: string;
   technicianId: string;
+  startsAt: string;
+  endsAt: string;
+  status: "AVAILABLE" | "BOOKED" | "BLOCKED" | "UNAVAILABLE" | string;
+  allocatedBookingId?: string | null;
+  version?: number;
+  source?: "MANUAL" | "RECURRING" | string;
+}
+
+export type WeeklyDayOfWeek =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export interface WeeklyDayInterval {
+  dayOfWeek: WeeklyDayOfWeek;
   startTime: string;
   endTime: string;
-  available: boolean;
+}
+
+export interface LocalTimeInterval {
+  startTime: string;
+  endTime: string;
+}
+
+export interface WeeklyScheduleRuleDto {
+  id: string;
+  timezone: string;
+  effectiveFrom: string;
+  effectiveUntil?: string | null;
+  version: number;
+  intervals: WeeklyDayInterval[];
+}
+
+export interface WeeklyScheduleOverview {
+  technicianId: string;
+  horizonDays: number;
+  currentRule: WeeklyScheduleRuleDto | null;
+  upcomingRules: WeeklyScheduleRuleDto[];
+}
+
+export type ScheduleExceptionType =
+  | "UNAVAILABLE"
+  | "CUSTOM_HOURS"
+  | "EXTRA_HOURS";
+
+export interface ScheduleExceptionItem {
+  id: string;
+  technicianId: string;
+  localDate: string;
+  exceptionType: ScheduleExceptionType;
+  startTime?: string | null;
+  endTime?: string | null;
+  reason?: string | null;
   version?: number;
+}
+
+export interface ScheduleConflictItem {
+  windowId: string;
+  bookingId?: string | null;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface CalendarSlotItem {
+  windowId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  localStartTime: string;
+  localEndTime: string;
+  status: "AVAILABLE" | "BOOKED" | "BLOCKED" | "UNAVAILABLE" | string;
+  source: "MANUAL" | "RECURRING" | string;
+  allocatedBookingId?: string | null;
+  version?: number | null;
+  projected: boolean;
+}
+
+export interface CalendarDayItem {
+  date: string;
+  dayOfWeek: WeeklyDayOfWeek;
+  dayStatus: "WORKING" | "BOOKED" | "OFF" | "UNSCHEDULED";
+  projected: boolean;
+  bookingCount: number;
+  exceptionType?: ScheduleExceptionType | null;
+  exceptionReason?: string | null;
+  slots: CalendarSlotItem[];
+}
+
+export interface TechnicianCalendarRow {
+  technicianId: string;
+  profileId: string;
+  fullName: string;
+  status: string;
+  isOnline: boolean;
+  specialties: string[];
+  timezone: string;
+  days: CalendarDayItem[];
+}
+
+export interface OrganizationCalendarResponse {
+  organizationId: string;
+  from: string;
+  to: string;
+  timezone: string;
+  horizonDays: number;
+  technicians: TechnicianCalendarRow[];
+}
+
+export interface ScheduleAuditItem {
+  id: string;
+  technicianId: string;
+  actorId: string;
+  action: string;
+  scope?: string | null;
+  affectedFrom?: string | null;
+  affectedTo?: string | null;
+  detailsJson?: string | null;
+  createdAt: string;
+}
+
+export type ScheduleChangeRequestType = "LEAVE" | "SHIFT_CHANGE" | "EXTRA_HOURS";
+export type ScheduleChangeRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED";
+
+export interface ScheduleChangeRequestItem {
+  id: string;
+  technicianId: string;
+  technicianName: string;
+  organizationId: string;
+  requestType: ScheduleChangeRequestType;
+  fromDate: string;
+  toDate: string;
+  requestedStartTime?: string | null;
+  requestedEndTime?: string | null;
+  reason?: string | null;
+  status: ScheduleChangeRequestStatus;
+  reviewedBy?: string | null;
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
+  version?: number;
+  createdAt: string;
+}
+
+export class ScheduleConflictError extends GatewayApiError {
+  readonly conflicts: ScheduleConflictItem[];
+
+  constructor(
+    payload: ApiResponse<{ conflicts?: ScheduleConflictItem[] } | null>
+  ) {
+    super({
+      message: payload.message || "Xung đột với booking đã phân bổ",
+      status: payload.code || 409,
+      errorCode: payload.errorCode,
+      traceId: payload.traceId,
+      fieldErrors: payload.errors,
+    });
+    this.name = "ScheduleConflictError";
+    this.conflicts = Array.isArray(payload.data?.conflicts)
+      ? payload.data.conflicts
+      : [];
+  }
+}
+
+function unwrapScheduleResponse<T>(payload: ApiResponse<T>): T {
+  if (
+    !payload.success &&
+    (payload.code === 409 || payload.errorCode === "SCHEDULE_ALLOCATION_CONFLICT")
+  ) {
+    throw new ScheduleConflictError(
+      payload as unknown as ApiResponse<{ conflicts?: ScheduleConflictItem[] } | null>
+    );
+  }
+  return unwrapApiResponse(payload);
 }
 
 export interface BookingWorkEvidenceDto {
@@ -637,14 +813,17 @@ export const orgOpsHttpApi = {
   async createTechnicianSchedule(
     organizationId: string,
     technicianId: string,
-    input: { startTime: string; endTime: string; available?: boolean }
+    input: { startsAt: string; endsAt: string }
   ): Promise<ScheduleWindowItem> {
     const res = await fetch(
       `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedules`,
       {
         method: "POST",
         headers: orgHeaders(organizationId),
-        body: JSON.stringify({ ...input, available: input.available ?? true }),
+        body: JSON.stringify({
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+        }),
       }
     );
     const json = (await res.json()) as ApiResponse<ScheduleWindowItem>;
@@ -668,7 +847,225 @@ export const orgOpsHttpApi = {
     );
     if (res.status === 204) return;
     const json = (await res.json()) as ApiResponse<null>;
-    unwrapApiResponse(json);
+    unwrapScheduleResponse(json);
+  },
+
+  async getTechnicianWeeklySchedule(
+    organizationId: string,
+    technicianId: string
+  ): Promise<WeeklyScheduleOverview> {
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<WeeklyScheduleOverview>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async upsertTechnicianWeeklySchedule(
+    organizationId: string,
+    technicianId: string,
+    input: {
+      timezone?: string;
+      effectiveFrom: string;
+      effectiveUntil?: string | null;
+      intervals: WeeklyDayInterval[];
+    },
+    version?: number
+  ): Promise<WeeklyScheduleOverview> {
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
+      {
+        method: "PUT",
+        headers: orgHeaders(organizationId, formatVersionEtag(version)),
+        body: JSON.stringify({
+          timezone: input.timezone || "Asia/Ho_Chi_Minh",
+          effectiveFrom: input.effectiveFrom,
+          effectiveUntil: input.effectiveUntil || null,
+          intervals: input.intervals,
+        }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<WeeklyScheduleOverview>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async endTechnicianWeeklySchedule(
+    organizationId: string,
+    technicianId: string,
+    effectiveUntil?: string,
+    version?: number
+  ): Promise<void> {
+    const query = effectiveUntil
+      ? `?effectiveUntil=${encodeURIComponent(effectiveUntil)}`
+      : "";
+    const headers: Record<string, string> = {
+      "X-Organization-Id": organizationId,
+    };
+    const etag = formatVersionEtag(version);
+    if (etag) headers["If-Match"] = etag;
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules${query}`,
+      { method: "DELETE", headers }
+    );
+    if (res.status === 204) return;
+    const json = (await res.json()) as ApiResponse<null>;
+    unwrapScheduleResponse(json);
+  },
+
+  async listTechnicianScheduleExceptions(
+    organizationId: string,
+    technicianId: string,
+    from?: string,
+    to?: string
+  ): Promise<ScheduleExceptionItem[]> {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions${qs}`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<ScheduleExceptionItem[]>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async upsertTechnicianScheduleExceptions(
+    organizationId: string,
+    technicianId: string,
+    input: {
+      fromDate: string;
+      toDate?: string;
+      exceptionType: ScheduleExceptionType;
+      reason?: string;
+      intervals?: LocalTimeInterval[];
+    }
+  ): Promise<ScheduleExceptionItem[]> {
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions`,
+      {
+        method: "PUT",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify({
+          fromDate: input.fromDate,
+          toDate: input.toDate || input.fromDate,
+          exceptionType: input.exceptionType,
+          reason: input.reason?.trim() || undefined,
+          intervals: input.intervals ?? [],
+        }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<ScheduleExceptionItem[]>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async deleteTechnicianScheduleException(
+    organizationId: string,
+    technicianId: string,
+    exceptionId: string,
+    version?: number
+  ): Promise<void> {
+    const headers: Record<string, string> = {
+      "X-Organization-Id": organizationId,
+    };
+    const etag = formatVersionEtag(version);
+    if (etag) headers["If-Match"] = etag;
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions/${encodeURIComponent(exceptionId)}`,
+      {
+        method: "DELETE",
+        headers,
+      }
+    );
+    if (res.status === 204) return;
+    const json = (await res.json()) as ApiResponse<null>;
+    unwrapScheduleResponse(json);
+  },
+
+  async getOrganizationCalendar(
+    organizationId: string,
+    params: {
+      from: string;
+      to: string;
+      technicianId?: string;
+      keyword?: string;
+      status?: string;
+    }
+  ): Promise<OrganizationCalendarResponse> {
+    const qs = new URLSearchParams();
+    qs.set("from", params.from);
+    qs.set("to", params.to);
+    if (params.technicianId) qs.set("technicianId", params.technicianId);
+    if (params.keyword?.trim()) qs.set("keyword", params.keyword.trim());
+    if (params.status && params.status !== "ALL") qs.set("status", params.status);
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/calendar?${qs.toString()}`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<OrganizationCalendarResponse>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async listTechnicianScheduleAudits(
+    organizationId: string,
+    technicianId: string
+  ): Promise<ScheduleAuditItem[]> {
+    const res = await fetch(
+      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-audits`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<ScheduleAuditItem[]>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async listOrganizationScheduleRequests(
+    organizationId: string,
+    status?: string
+  ): Promise<ScheduleChangeRequestItem[]> {
+    const qs =
+      status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests${qs}`,
+      {
+        cache: "no-store",
+        headers: { "X-Organization-Id": organizationId },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<ScheduleChangeRequestItem[]>;
+    return unwrapScheduleResponse(json);
+  },
+
+  async reviewOrganizationScheduleRequest(
+    organizationId: string,
+    requestId: string,
+    input: { approve: boolean; reviewNote?: string }
+  ): Promise<ScheduleChangeRequestItem> {
+    const res = await fetch(
+      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests/${encodeURIComponent(requestId)}/review`,
+      {
+        method: "POST",
+        headers: orgHeaders(organizationId),
+        body: JSON.stringify({
+          approve: input.approve,
+          reviewNote: input.reviewNote?.trim() || undefined,
+        }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<ScheduleChangeRequestItem>;
+    return unwrapScheduleResponse(json);
   },
 
   async getWarranty(

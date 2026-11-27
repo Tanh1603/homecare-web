@@ -33,6 +33,21 @@ const STATUS_CONFIG: Record<
   REFUNDED: { label: "Đã hoàn tiền", variant: "success" },
   REFUND_FAILED: { label: "Hoàn tiền thất bại", variant: "destructive" },
   MANUAL_REVIEW: { label: "Cần kiểm tra thủ công", variant: "warning" },
+  WAITING_FOR_PARTS: { label: "Chờ linh kiện", variant: "warning" },
+  CUSTOMER_NO_SHOW: { label: "Khách vắng mặt", variant: "secondary" },
+  COMPLETED_PENDING_ACCEPTANCE: { label: "Chờ nghiệm thu", variant: "warning" },
+  ACCEPTED: { label: "Đã nghiệm thu", variant: "success" },
+  REVISION_REQUESTED: { label: "Yêu cầu sửa lại", variant: "warning" },
+  DISPUTED: { label: "Đang tranh chấp", variant: "destructive" },
+  CLOSED_UNRESOLVED: { label: "Đóng chưa giải quyết", variant: "secondary" },
+  SUBMITTED: { label: "Mới gửi", variant: "warning" },
+  UNDER_REVIEW: { label: "Đang xem xét", variant: "default" },
+  AWAITING_PROVIDER_RESPONSE: { label: "Chờ đối tác phản hồi", variant: "warning" },
+  AWAITING_CUSTOMER_EVIDENCE: { label: "Chờ khách bổ sung", variant: "warning" },
+  RESOLUTION_PROPOSED: { label: "Đã đề xuất xử lý", variant: "default" },
+  RESOLVED: { label: "Đã giải quyết", variant: "success" },
+  ESCALATED: { label: "Chuyển ngoài nền tảng", variant: "destructive" },
+  CLOSED: { label: "Đã đóng", variant: "secondary" },
 };
 
 const DOMAIN_STATUS_CONFIG: Record<

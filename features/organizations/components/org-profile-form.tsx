@@ -120,6 +120,7 @@ export function OrgProfileForm({
         organizationId,
         parsed.data
       );
+      setOrgSnapshot(updated);
       const nextSaved = {
         name: updated.name,
         phone: updated.phone,

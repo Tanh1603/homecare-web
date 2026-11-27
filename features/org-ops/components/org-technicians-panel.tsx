@@ -1,15 +1,24 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Calendar, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OrgTechnicianItem } from "../api/org-ops.adapter";
-import { orgOpsHttpApi, type ScheduleWindowItem } from "../api/org-ops.http";
+import {
+  orgOpsHttpApi,
+  type ScheduleExceptionItem,
+  type ScheduleWindowItem,
+  type WeeklyScheduleOverview,
+} from "../api/org-ops.http";
+import { TechnicianWeeklyScheduleEditor } from "./technician-weekly-schedule-editor";
+import { TechnicianScheduleExceptionsTab } from "./technician-schedule-exceptions-tab";
 import {
   AccountProvisioningStep,
   type ProvisionedAccountInfo,
 } from "@/features/organizations/components/account-provisioning-step";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
@@ -19,6 +28,7 @@ import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
   Table,
   TableBody,
@@ -28,6 +38,16 @@ import {
   TableRow,
 } from "@/shared/ui/table";
 import { formatDateTime } from "@/shared/lib/utils";
+
+function todayLocalDate(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function currentEpochMs(): number {
+  return Date.now();
+}
 
 export function OrgTechniciansPanel({
   organizationId,
@@ -56,9 +76,16 @@ export function OrgTechniciansPanel({
   const [scheduleTech, setScheduleTech] =
     React.useState<OrgTechnicianItem | null>(null);
   const [schedules, setSchedules] = React.useState<ScheduleWindowItem[]>([]);
+  const [weeklyOverview, setWeeklyOverview] =
+    React.useState<WeeklyScheduleOverview | null>(null);
+  const [scheduleExceptions, setScheduleExceptions] = React.useState<
+    ScheduleExceptionItem[]
+  >([]);
+  const [scheduleLoadedAt, setScheduleLoadedAt] = React.useState(0);
   const [loadingSchedules, setLoadingSchedules] = React.useState(false);
-  const [startTime, setStartTime] = React.useState("");
-  const [endTime, setEndTime] = React.useState("");
+  const [scheduleDate, setScheduleDate] = React.useState(todayLocalDate);
+  const [startTime, setStartTime] = React.useState("08:00:00");
+  const [endTime, setEndTime] = React.useState("17:00:00");
 
   const currentSnapshot = JSON.stringify({
     provisionedId: provisioned?.userId ?? null,
@@ -192,15 +219,18 @@ export function OrgTechniciansPanel({
     }
   }
 
-  async function openSchedules(t: OrgTechnicianItem) {
-    setScheduleTech(t);
+  async function refreshScheduleBundle(techId: string) {
     setLoadingSchedules(true);
     try {
-      const items = await orgOpsHttpApi.listTechnicianSchedules(
-        organizationId,
-        t.id
-      );
+      const [items, overview, exceptions] = await Promise.all([
+        orgOpsHttpApi.listTechnicianSchedules(organizationId, techId),
+        orgOpsHttpApi.getTechnicianWeeklySchedule(organizationId, techId),
+        orgOpsHttpApi.listTechnicianScheduleExceptions(organizationId, techId),
+      ]);
       setSchedules(items);
+      setWeeklyOverview(overview);
+      setScheduleExceptions(exceptions);
+      setScheduleLoadedAt(currentEpochMs());
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể tải lịch làm việc"
@@ -211,23 +241,35 @@ export function OrgTechniciansPanel({
     }
   }
 
+  async function openSchedules(t: OrgTechnicianItem) {
+    setScheduleTech(t);
+    await refreshScheduleBundle(t.id);
+  }
+
   async function handleAddSchedule(e: React.FormEvent) {
     e.preventDefault();
-    if (!scheduleTech || !startTime || !endTime) return;
+    if (!scheduleTech || !scheduleDate || !startTime || !endTime) return;
+    const startsAt = new Date(`${scheduleDate}T${startTime}`);
+    const endsAt = new Date(`${scheduleDate}T${endTime}`);
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+      toast.error("Ngày hoặc giờ không hợp lệ.");
+      return;
+    }
+    if (endsAt <= startsAt) {
+      toast.error("Giờ kết thúc phải sau giờ bắt đầu.");
+      return;
+    }
     setSaving(true);
     try {
       const created = await orgOpsHttpApi.createTechnicianSchedule(
         organizationId,
         scheduleTech.id,
         {
-          startTime: new Date(startTime).toISOString(),
-          endTime: new Date(endTime).toISOString(),
-          available: true,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
         }
       );
       setSchedules((prev) => [...prev, created]);
-      setStartTime("");
-      setEndTime("");
       toast.success("Đã thêm khung giờ làm việc");
     } catch (err) {
       toast.error(
@@ -248,6 +290,14 @@ export function OrgTechniciansPanel({
         w.version
       );
       setSchedules((prev) => prev.filter((item) => item.id !== w.id));
+      if (w.source === "RECURRING") {
+        const refreshedExceptions = await orgOpsHttpApi
+          .listTechnicianScheduleExceptions(organizationId, scheduleTech.id)
+          .catch(() => null);
+        if (refreshedExceptions !== null) {
+          setScheduleExceptions(refreshedExceptions);
+        }
+      }
       toast.success("Đã xóa khung giờ");
     } catch (err) {
       toast.error(
@@ -258,7 +308,13 @@ export function OrgTechniciansPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button asChild size="sm" variant="outline">
+          <Link href="/org/schedules">
+            <Calendar className="h-4 w-4" />
+            Lịch làm việc tập trung
+          </Link>
+        </Button>
         <Button size="sm" onClick={openCreate}>
           <Plus className="h-4 w-4" />
           Thêm kỹ thuật viên
@@ -438,100 +494,190 @@ export function OrgTechniciansPanel({
         open={Boolean(scheduleTech)}
         onClose={() => setScheduleTech(null)}
         title={`Lịch làm việc — ${scheduleTech?.fullName ?? ""}`}
-        subtitle="Quản lý các khung giờ sẵn sàng nhận lịch hẹn của kỹ thuật viên."
-        className="max-w-lg"
+        subtitle="Thiết lập lịch tuần định kỳ, ngày nghỉ / đổi ca ngoại lệ và xem khung giờ thực tế nhận Booking."
+        className="max-w-2xl"
       >
-        <form onSubmit={handleAddSchedule} className="space-y-3">
-          <FormSection
-            title="Thêm khung giờ mới"
-            description="Chọn thời gian bắt đầu và kết thúc ca trực."
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Bắt đầu" htmlFor="sched-start" required>
-                <Input
-                  id="sched-start"
-                  type="datetime-local"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  required
-                />
-              </FormField>
-              <FormField label="Kết thúc" htmlFor="sched-end" required>
-                <Input
-                  id="sched-end"
-                  type="datetime-local"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  required
-                />
-              </FormField>
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={saving}>
-                <Plus className="h-3.5 w-3.5" />
-                Thêm khung giờ
-              </Button>
-            </div>
-          </FormSection>
-        </form>
+        {scheduleTech ? (
+          <Tabs defaultValue="weekly" className="w-full">
+            <TabsList>
+              <TabsTrigger value="weekly">Lịch tuần</TabsTrigger>
+              <TabsTrigger value="exceptions">
+                Ngày ngoại lệ ({scheduleExceptions.length})
+              </TabsTrigger>
+              <TabsTrigger value="windows">
+                Khung giờ thực tế ({schedules.length})
+              </TabsTrigger>
+            </TabsList>
 
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold text-muted-foreground">
-            Khung giờ đã đăng ký ({schedules.length})
-          </h3>
-          {loadingSchedules ? (
-            <div
-              className="space-y-2"
-              role="status"
-              aria-label="Đang tải lịch làm việc"
-              aria-busy="true"
-            >
-              {[0, 1].map((row) => (
-                <div
-                  key={row}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+            <TabsContent value="weekly">
+              <TechnicianWeeklyScheduleEditor
+                key={`${scheduleTech.id}-${weeklyOverview?.currentRule?.id ?? "none"}-${weeklyOverview?.currentRule?.version ?? 0}-${weeklyOverview?.upcomingRules?.length ?? 0}`}
+                organizationId={organizationId}
+                technicianId={scheduleTech.id}
+                overview={weeklyOverview}
+                onSaved={async () => {
+                  await refreshScheduleBundle(scheduleTech.id);
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="exceptions">
+              <TechnicianScheduleExceptionsTab
+                organizationId={organizationId}
+                technicianId={scheduleTech.id}
+                exceptions={scheduleExceptions}
+                onChanged={async () => {
+                  await refreshScheduleBundle(scheduleTech.id);
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="windows" className="space-y-4">
+              <form onSubmit={handleAddSchedule} className="space-y-3">
+                <FormSection
+                  title="Thêm khung giờ thủ công (1 ngày)"
+                  description="Dùng cho khung giờ bổ sung thủ công. Khung giờ thủ công được bảo toàn khi đồng bộ lịch tuần."
                 >
-                  <div className="space-y-2">
-                    <Skeleton className="h-3.5 w-48 max-w-full" />
-                    <Skeleton className="h-3 w-20" />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <FormField label="Ngày làm việc" htmlFor="sched-date" required>
+                      <Input
+                        id="sched-date"
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        required
+                      />
+                    </FormField>
+                    <FormField label="Giờ bắt đầu" htmlFor="sched-start" required>
+                      <Input
+                        id="sched-start"
+                        type="time"
+                        step="1"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                        required
+                      />
+                    </FormField>
+                    <FormField label="Giờ kết thúc" htmlFor="sched-end" required>
+                      <Input
+                        id="sched-end"
+                        type="time"
+                        step="1"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        className="appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                        required
+                      />
+                    </FormField>
                   </div>
-                  <Skeleton className="h-8 w-8 rounded-md" />
-                </div>
-              ))}
-            </div>
-          ) : schedules.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Chưa có khung giờ làm việc nào.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {schedules.map((w) => (
-                <div
-                  key={w.id}
-                  className="flex items-center justify-between rounded-lg border border-border bg-surface-secondary/50 px-3 py-2 text-xs"
-                >
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {formatDateTime(w.startTime)} →{" "}
-                      {formatDateTime(w.endTime)}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {w.available ? "Sẵn sàng" : "Đã khóa"}
-                    </p>
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm" disabled={saving}>
+                      <Plus className="h-3.5 w-3.5" />
+                      Thêm khung giờ thủ công
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDeleteSchedule(w)}
-                    className="text-muted-foreground hover:text-destructive"
+                </FormSection>
+              </form>
+
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  Khung giờ thực tế ({schedules.length})
+                </h3>
+                {loadingSchedules ? (
+                  <div
+                    className="space-y-2"
+                    role="status"
+                    aria-label="Đang tải lịch làm việc"
+                    aria-busy="true"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                    {[0, 1].map((row) => (
+                      <div
+                        key={row}
+                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                      >
+                        <div className="space-y-2">
+                          <Skeleton className="h-3.5 w-48 max-w-full" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    ))}
+                  </div>
+                ) : schedules.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Chưa có khung giờ làm việc nào. Hãy thiết lập ở tab{" "}
+                    <strong>Lịch tuần</strong>.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {schedules.map((w) => {
+                      const isBooked =
+                        w.status === "BOOKED" || Boolean(w.allocatedBookingId);
+                      const isExpired =
+                        scheduleLoadedAt > 0 &&
+                        new Date(w.endsAt).getTime() <= scheduleLoadedAt;
+                      return (
+                        <div
+                          key={w.id}
+                          className="flex items-center justify-between rounded-lg border border-border bg-surface-secondary/50 px-3 py-2 text-xs"
+                        >
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">
+                              {formatDateTime(w.startsAt)} →{" "}
+                              {formatDateTime(w.endsAt)}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge
+                                variant={
+                                  isBooked
+                                    ? "warning"
+                                    : isExpired
+                                      ? "secondary"
+                                      : w.status === "AVAILABLE"
+                                        ? "success"
+                                        : "destructive"
+                                }
+                              >
+                                {isBooked
+                                  ? "Đã phân công"
+                                  : isExpired
+                                    ? "Hết hạn"
+                                    : w.status === "AVAILABLE"
+                                      ? "Sẵn sàng"
+                                      : "Đã khóa"}
+                              </Badge>
+                              <Badge variant="outline">
+                                {w.source === "RECURRING"
+                                  ? "Định kỳ"
+                                  : "Thủ công"}
+                              </Badge>
+                            </div>
+                          </div>
+                          {!isBooked ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={
+                                w.source === "RECURRING"
+                                  ? "Xóa khung giờ (sẽ đánh dấu nghỉ khung giờ này để không tự sinh lại)"
+                                  : "Xóa khung giờ thủ công"
+                              }
+                              onClick={() => handleDeleteSchedule(w)}
+                              className="text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : null}
       </ContextInspector>
     </div>
   );

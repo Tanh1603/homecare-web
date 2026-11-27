@@ -5,6 +5,7 @@ import {
   Building2,
   FolderTree,
   LayoutDashboard,
+  Scale,
   SlidersHorizontal,
   Users,
   Wrench,
@@ -41,6 +42,7 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
     defaultHref: "/admin/catalog",
     items: [
       { href: "/admin/catalog", label: "Dịch vụ & Sản phẩm", icon: FolderTree },
+      { href: "/admin/disputes", label: "Tranh chấp & SLA", icon: Scale },
       {
         href: "/admin/governance",
         label: "Cấu hình quản trị",
