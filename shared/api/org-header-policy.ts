@@ -41,9 +41,13 @@ export function shouldAttachOrganizationHeader(
   }
 
   // /organizations/my, POST /organizations, GET /organizations/{id} are personal/member-lookup;
-  // only /organizations/current and /organizations/current/* require X-Organization-Id.
+  // /organizations/current/* and /organizations/{id}/technicians/* require X-Organization-Id.
   if (path === "/organizations" || path.startsWith("/organizations/")) {
-    return path === "/organizations/current" || path.startsWith("/organizations/current/");
+    return (
+      path === "/organizations/current" ||
+      path.startsWith("/organizations/current/") ||
+      /^\/organizations\/[^/]+\/technicians(\/|$)/.test(path)
+    );
   }
 
   if (/^\/products\/[^/]+\/reviews(\/|$)/.test(path)) {

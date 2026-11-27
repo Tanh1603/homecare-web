@@ -82,7 +82,7 @@ export const organizationsHttpAdapter = {
       "x-homecare-scope": "personal",
     };
     if (typeof version === "number") {
-      headers["If-Match"] = `W/"${version}"`;
+      headers["If-Match"] = `"v${version}"`;
     }
     const payload = {
       ...input,
@@ -116,7 +116,7 @@ export const organizationsHttpAdapter = {
       "x-homecare-scope": "personal",
     };
     if (typeof version === "number") {
-      headers["If-Match"] = `W/"${version}"`;
+      headers["If-Match"] = `"v${version}"`;
     }
     const res = await fetch(
       `/api/gateway/organizations/${encodeURIComponent(organizationId)}/upgrade-legal-entity`,

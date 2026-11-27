@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, RotateCcw, UserPlus } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, RotateCcw, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -26,6 +26,7 @@ export function AccountProvisioningStep({
   const [email, setEmail] = React.useState("");
   const [fullName, setFullName] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
 
   async function handleCreateAccount(e: React.FormEvent) {
@@ -137,15 +138,30 @@ export function AccountProvisioningStep({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="prov-password">Mật khẩu tạm</Label>
-          <Input
-            id="prov-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Tối thiểu 6 ký tự"
-            minLength={6}
-            required
-          />
+          <div className="relative">
+            <Input
+              id="prov-password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Tối thiểu 6 ký tự"
+              minLength={6}
+              required
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
       <div className="flex justify-end pt-1">

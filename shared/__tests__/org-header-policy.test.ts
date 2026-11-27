@@ -21,6 +21,9 @@ test("omits X-Organization-Id on personal-only and admin routes", () => {
 test("attaches X-Organization-Id on org-scoped routes unless explicitScope=personal", () => {
   assert.equal(shouldAttachOrganizationHeader("PATCH", "/organizations/current"), true);
   assert.equal(shouldAttachOrganizationHeader("GET", "/organizations/current/members"), true);
+  assert.equal(shouldAttachOrganizationHeader("GET", "/organizations/org-1/technicians/calendar"), true);
+  assert.equal(shouldAttachOrganizationHeader("POST", "/organizations/org-1/technicians/schedule-requests/r1/review"), true);
+  assert.equal(shouldAttachOrganizationHeader("GET", "/organizations/org-1/technicians/calendar", "personal"), false);
   assert.equal(shouldAttachOrganizationHeader("GET", "/bookings?size=20"), true);
   assert.equal(shouldAttachOrganizationHeader("POST", "/bookings/b1/assign"), true);
   assert.equal(shouldAttachOrganizationHeader("GET", "/merchant/returns"), true);
