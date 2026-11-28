@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Eye, Scale, UserCheck, XCircle } from "lucide-react";
+import { Eye, PackageCheck, Scale, UserCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { disputesHttpApi } from "@/features/disputes/api/disputes.http";
 import { OrgDisputeResponseDrawer } from "@/features/disputes/components/org-dispute-response-drawer";
+import { OrgPartsReviewDrawer } from "@/features/warranties/components/org-parts-review-drawer";
 import type { OrgBookingItem, OrgTechnicianItem } from "../api/org-ops.adapter";
 import {
   orgOpsHttpApi,
@@ -79,6 +80,9 @@ export function OrgBookingsTable({
     React.useState<BookingDetailDto | null>(null);
   const [loadingDetail, setLoadingDetail] = React.useState(false);
   const [disputeBookingId, setDisputeBookingId] = React.useState<string | null>(
+    null
+  );
+  const [partsBookingId, setPartsBookingId] = React.useState<string | null>(
     null
   );
 
@@ -269,6 +273,9 @@ export function OrgBookingsTable({
                 SAME_ORG_REASSIGN_STATUSES.has(b.status);
               const canRespondDispute =
                 b.status === "DISPUTED" || b.status === "ACCEPTED";
+              const canReviewParts =
+                SAME_ORG_REASSIGN_STATUSES.has(b.status) ||
+                b.status === "COMPLETED";
               const canCancel = !TERMINAL_BOOKING_STATUSES.has(b.status);
               return (
                 <TableRow key={b.id}>
@@ -328,6 +335,13 @@ export function OrgBookingsTable({
                               onSelect: () => openAssignDialog(b),
                             },
                             {
+                              id: "parts-review",
+                              label: "Duyệt linh kiện",
+                              icon: PackageCheck,
+                              hidden: !canReviewParts,
+                              onSelect: () => setPartsBookingId(b.id),
+                            },
+                            {
                               id: "dispute-response",
                               label: "Phản hồi tranh chấp",
                               icon: Scale,
@@ -369,6 +383,14 @@ export function OrgBookingsTable({
         open={Boolean(disputeBookingId)}
         onClose={() => setDisputeBookingId(null)}
         onSubmitted={() => router.refresh()}
+      />
+
+      <OrgPartsReviewDrawer
+        bookingId={partsBookingId}
+        open={Boolean(partsBookingId)}
+        onOpenChange={(open) => {
+          if (!open) setPartsBookingId(null);
+        }}
       />
 
       <Dialog
