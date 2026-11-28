@@ -25,35 +25,43 @@ export function OrgDisputeResponseDrawer({
   onSubmitted?: () => void;
 }) {
   const [disputes, setDisputes] = React.useState<DisputeItem[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [loadedKey, setLoadedKey] = React.useState<string | null>(null);
   const [responseText, setResponseText] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
+  const requestKey = open && bookingId ? `${organizationId}:${bookingId}` : null;
+  const loading = Boolean(requestKey) && loadedKey !== requestKey;
+
   React.useEffect(() => {
-    if (!open || !bookingId) return;
+    if (!requestKey || !bookingId) return;
     let active = true;
-    setLoading(true);
-    setResponseText("");
     disputesHttpApi
       .orgListBookingDisputes(organizationId, bookingId)
       .then((list) => {
-        if (active) setDisputes(list);
+        if (!active) return;
+        setDisputes(list);
+        setResponseText("");
       })
       .catch((err) => {
-        if (active) {
-          toast.error(
-            err instanceof Error ? err.message : "Không thể tải hồ sơ tranh chấp"
-          );
-          setDisputes([]);
-        }
+        if (!active) return;
+        toast.error(
+          err instanceof Error ? err.message : "Không thể tải hồ sơ tranh chấp"
+        );
+        setDisputes([]);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setLoadedKey(requestKey);
       });
     return () => {
       active = false;
     };
-  }, [open, bookingId, organizationId]);
+  }, [requestKey, bookingId, organizationId]);
+
+  const handleClose = React.useCallback(() => {
+    setLoadedKey(null);
+    setResponseText("");
+    onClose();
+  }, [onClose]);
 
   const activeDispute =
     disputes.find(
@@ -83,7 +91,7 @@ export function OrgDisputeResponseDrawer({
       );
       toast.success("Đã gửi phản hồi tranh chấp tới quản trị viên.");
       onSubmitted?.();
-      onClose();
+      handleClose();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể gửi phản hồi tranh chấp"
@@ -96,7 +104,7 @@ export function OrgDisputeResponseDrawer({
   return (
     <FormDrawer
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={`Tranh chấp lịch hẹn #${formatShortId(bookingId ?? "")}`}
       description="Xem chi tiết khiếu nại và gửi phản hồi giải trình trong thời hạn SLA 48 giờ."
       isDirty={Boolean(responseText.trim())}
@@ -107,7 +115,7 @@ export function OrgDisputeResponseDrawer({
           ? handleSubmit
           : (e) => {
               e.preventDefault();
-              onClose();
+              handleClose();
             }
       }
     >

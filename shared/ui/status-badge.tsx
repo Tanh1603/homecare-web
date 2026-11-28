@@ -48,6 +48,10 @@ const STATUS_CONFIG: Record<
   RESOLVED: { label: "Đã giải quyết", variant: "success" },
   ESCALATED: { label: "Chuyển ngoài nền tảng", variant: "destructive" },
   CLOSED: { label: "Đã đóng", variant: "secondary" },
+  PUBLISHED: { label: "Đang hiển thị", variant: "success" },
+  HIDDEN: { label: "Đã ẩn (Kiểm duyệt)", variant: "warning" },
+  DELETED: { label: "Đã xóa vĩnh viễn", variant: "secondary" },
+  NOTIFICATION_FAILED: { label: "Lỗi gửi thông báo", variant: "destructive" },
 };
 
 const DOMAIN_STATUS_CONFIG: Record<

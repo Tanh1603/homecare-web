@@ -43,6 +43,25 @@ export interface DisputeItem {
   evidence: DisputeEvidenceItem[];
 }
 
+export interface AdminNotificationFailedBooking {
+  bookingId: string;
+  providerId: string;
+  requesterProfileId: string;
+  serviceName: string;
+  completionSubmittedAt?: string | null;
+  notificationFailedAt?: string | null;
+  notificationRetryCount: number;
+  lastNotificationRetryAt?: string | null;
+  adminReviewReason?: string | null;
+  version?: number;
+}
+
+export interface AdminNotificationFailedBookingDetail extends AdminNotificationFailedBooking {
+  status: string;
+  completionSummary?: string | null;
+  workEvidenceCount: number;
+}
+
 function etagHeader(version?: number, personal = false): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (personal) {
@@ -203,6 +222,55 @@ export const disputesHttpApi = {
       assignedTechnicianName?: string | null;
       version?: number;
     }>;
+    return unwrapApiResponse(json);
+  },
+
+  async adminListNotificationFailedBookings(
+    page = 1,
+    size = 30
+  ): Promise<AdminNotificationFailedBooking[]> {
+    const query = new URLSearchParams({ page: String(page), size: String(size) });
+    const res = await fetch(
+      `/api/gateway/admin/bookings/notification-failed?${query.toString()}`,
+      {
+        cache: "no-store",
+        headers: { "x-homecare-scope": "personal" },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<
+      PageResponse<AdminNotificationFailedBooking> | AdminNotificationFailedBooking[]
+    >;
+    return extractPageItems(unwrapApiResponse(json));
+  },
+
+  async adminGetNotificationFailedBooking(
+    bookingId: string
+  ): Promise<AdminNotificationFailedBookingDetail> {
+    const res = await fetch(
+      `/api/gateway/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}`,
+      {
+        cache: "no-store",
+        headers: { "x-homecare-scope": "personal" },
+      }
+    );
+    const json = (await res.json()) as ApiResponse<AdminNotificationFailedBookingDetail>;
+    return unwrapApiResponse(json);
+  },
+
+  async adminRetryCompletionNotification(
+    bookingId: string,
+    version?: number,
+    note?: string
+  ): Promise<AdminNotificationFailedBookingDetail> {
+    const res = await fetch(
+      `/api/gateway/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}/retry`,
+      {
+        method: "POST",
+        headers: etagHeader(version, true),
+        body: JSON.stringify({ note: note?.trim() || undefined }),
+      }
+    );
+    const json = (await res.json()) as ApiResponse<AdminNotificationFailedBookingDetail>;
     return unwrapApiResponse(json);
   },
 };

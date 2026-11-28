@@ -8,6 +8,7 @@ import {
   Scale,
   ShieldCheck,
   SlidersHorizontal,
+  Star,
   Users,
   Wrench,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
       { href: "/admin/catalog", label: "Dịch vụ & Sản phẩm", icon: FolderTree },
       { href: "/admin/disputes", label: "Tranh chấp & SLA", icon: Scale },
       { href: "/admin/warranties", label: "Bảo hành & Claims", icon: ShieldCheck },
+      { href: "/admin/reviews", label: "Đánh giá & Kiểm duyệt", icon: Star },
       {
         href: "/admin/governance",
         label: "Cấu hình quản trị",

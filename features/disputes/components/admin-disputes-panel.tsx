@@ -3,15 +3,22 @@
 import * as React from "react";
 import {
   AlertTriangle,
+  BellOff,
   CheckCircle2,
   Clock,
   ExternalLink,
   MessageSquareText,
   RefreshCw,
   Scale,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
-import { disputesHttpApi, type DisputeItem } from "../api/disputes.http";
+import {
+  disputesHttpApi,
+  type AdminNotificationFailedBooking,
+  type AdminNotificationFailedBookingDetail,
+  type DisputeItem,
+} from "../api/disputes.http";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -34,12 +41,21 @@ const TERMINAL_STATUSES = new Set(["RESOLVED", "ESCALATED", "CLOSED"]);
 
 export function AdminDisputesPanel({
   initialDisputes,
+  initialNotificationFailed = [],
   initialError = null,
 }: {
   initialDisputes: DisputeItem[];
+  initialNotificationFailed?: AdminNotificationFailedBooking[];
   initialError?: string | null;
 }) {
+  const [activeTab, setActiveTab] = React.useState<"DISPUTES" | "NOTIFICATION_FAILED">("DISPUTES");
   const [disputes, setDisputes] = React.useState<DisputeItem[]>(initialDisputes);
+  const [failedBookings, setFailedBookings] =
+    React.useState<AdminNotificationFailedBooking[]>(initialNotificationFailed);
+  const [failedDetail, setFailedDetail] =
+    React.useState<AdminNotificationFailedBookingDetail | null>(null);
+  const [retryNote, setRetryNote] = React.useState("");
+  const [retryingBookingId, setRetryingBookingId] = React.useState<string | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(initialError);
   const [reloading, setReloading] = React.useState(false);
 
@@ -92,12 +108,62 @@ export function AdminDisputesPanel({
     setReloading(true);
     setLoadError(null);
     try {
-      const next = await disputesHttpApi.adminListDisputes();
-      setDisputes(next);
+      const [nextDisputes, nextFailed] = await Promise.all([
+        disputesHttpApi.adminListDisputes(),
+        disputesHttpApi.adminListNotificationFailedBookings(),
+      ]);
+      setDisputes(nextDisputes);
+      setFailedBookings(nextFailed);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Không thể tải danh sách tranh chấp.");
+      setLoadError(err instanceof Error ? err.message : "Không thể tải dữ liệu.");
     } finally {
       setReloading(false);
+    }
+  }
+
+  async function handleOpenFailedDetail(bookingId: string) {
+    try {
+      const detail = await disputesHttpApi.adminGetNotificationFailedBooking(bookingId);
+      setFailedDetail(detail);
+      setRetryNote("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không thể tải chi tiết booking lỗi.");
+    }
+  }
+
+  async function handleRetryNotification(
+    bookingId: string,
+    version?: number,
+    customNote?: string
+  ) {
+    setRetryingBookingId(bookingId);
+    try {
+      const updated = await disputesHttpApi.adminRetryCompletionNotification(
+        bookingId,
+        version,
+        customNote
+      );
+      setFailedBookings((prev) =>
+        prev.map((item) =>
+          item.bookingId === bookingId
+            ? {
+                ...item,
+                notificationRetryCount: updated.notificationRetryCount,
+                lastNotificationRetryAt: updated.lastNotificationRetryAt,
+                version: updated.version,
+              }
+            : item
+        )
+      );
+      if (failedDetail?.bookingId === bookingId) {
+        setFailedDetail(updated);
+      }
+      setRetryNote("");
+      toast.success("Đã phát lại thông báo nghiệm thu; cảnh báo sẽ đóng khi xác nhận gửi thành công.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gửi lại thông báo thất bại.");
+    } finally {
+      setRetryingBookingId(null);
     }
   }
 
@@ -162,25 +228,26 @@ export function AdminDisputesPanel({
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            { code: "ALL", label: "Tất cả" },
-            { code: "SUBMITTED", label: "Mới gửi" },
-            { code: "AWAITING_PROVIDER_RESPONSE", label: "Chờ đối tác" },
-            { code: "UNDER_REVIEW", label: "Đang xem xét" },
-            { code: "RESOLUTION_PROPOSED", label: "Đã đề xuất" },
-          ].map((tab) => (
-            <Button
-              key={tab.code}
-              type="button"
-              size="sm"
-              variant={statusFilter === tab.code ? "secondary" : "outline"}
-              onClick={() => setStatusFilter(tab.code)}
-            >
-              {tab.label}
-            </Button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "DISPUTES" ? "default" : "outline"}
+            onClick={() => setActiveTab("DISPUTES")}
+          >
+            <Scale className="h-3.5 w-3.5" />
+            Tranh chấp ({disputes.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "NOTIFICATION_FAILED" ? "default" : "outline"}
+            onClick={() => setActiveTab("NOTIFICATION_FAILED")}
+          >
+            <BellOff className="h-3.5 w-3.5" />
+            Notification Failed ({failedBookings.length})
+          </Button>
         </div>
         <Button
           type="button"
@@ -193,6 +260,101 @@ export function AdminDisputesPanel({
           {reloading ? "Đang tải..." : "Làm mới"}
         </Button>
       </div>
+
+      {activeTab === "NOTIFICATION_FAILED" ? (
+        failedBookings.length === 0 ? (
+          <EmptyState
+            icon={BellOff}
+            title="Không có đơn lỗi gửi thông báo"
+            description="Các lịch hẹn chờ nghiệm thu quá 24h chưa xác nhận gửi thông báo (D-27) sẽ hiển thị tại đây để Admin kiểm tra và thử gửi lại."
+          />
+        ) : (
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking / Provider</TableHead>
+                    <TableHead>Dịch vụ &amp; Lý do</TableHead>
+                    <TableHead>Mốc gửi / Báo lỗi</TableHead>
+                    <TableHead>Retry</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {failedBookings.map((fb) => (
+                    <TableRow key={fb.bookingId}>
+                      <TableCell className="font-mono text-xs tabular-nums">
+                        <p>BK #{formatShortId(fb.bookingId)}</p>
+                        <p className="text-muted-foreground">PRV #{formatShortId(fb.providerId)}</p>
+                      </TableCell>
+                      <TableCell className="max-w-sm text-xs">
+                        <p className="font-medium">{fb.serviceName}</p>
+                        <p className="text-muted-foreground">{fb.adminReviewReason || "Chưa xác nhận gửi sau 24h"}</p>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        <p>Hoàn thành: {fb.completionSubmittedAt ? formatDate(fb.completionSubmittedAt) : "—"}</p>
+                        <p>Báo lỗi: {fb.notificationFailedAt ? formatDate(fb.notificationFailedAt) : "—"}</p>
+                      </TableCell>
+                      <TableCell className="text-xs tabular-nums">
+                        <p>{fb.notificationRetryCount} lần</p>
+                        {fb.lastNotificationRetryAt ? (
+                          <p className="text-muted-foreground">{formatDate(fb.lastNotificationRetryAt)}</p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status="NOTIFICATION_FAILED" />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleOpenFailedDetail(fb.bookingId)}
+                          >
+                            Chi tiết
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={retryingBookingId === fb.bookingId}
+                            onClick={() => void handleRetryNotification(fb.bookingId, fb.version)}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            Retry Notification
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        )
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { code: "ALL", label: "Tất cả" },
+              { code: "SUBMITTED", label: "Mới gửi" },
+              { code: "AWAITING_PROVIDER_RESPONSE", label: "Chờ đối tác" },
+              { code: "UNDER_REVIEW", label: "Đang xem xét" },
+              { code: "RESOLUTION_PROPOSED", label: "Đã đề xuất" },
+            ].map((tab) => (
+              <Button
+                key={tab.code}
+                type="button"
+                size="sm"
+                variant={statusFilter === tab.code ? "secondary" : "outline"}
+                onClick={() => setStatusFilter(tab.code)}
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
 
       {visibleDisputes.length === 0 ? (
         <EmptyState
@@ -332,6 +494,44 @@ export function AdminDisputesPanel({
           </div>
         </Card>
       )}
+        </>
+      )}
+
+      <FormDrawer
+        open={Boolean(failedDetail)}
+        onClose={() => setFailedDetail(null)}
+        title={`Chi tiết lỗi thông báo BK #${formatShortId(failedDetail?.bookingId ?? "")}`}
+        description="Bộ đếm tự động nghiệm thu 7 ngày đang tạm dừng theo D-27. Chỉ giải trừ cảnh báo sau khi xác nhận gửi thành công."
+        isDirty={Boolean(retryNote.trim())}
+        saving={retryingBookingId === failedDetail?.bookingId}
+        submitLabel="Thử gửi lại thông báo"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!failedDetail) return;
+          void handleRetryNotification(failedDetail.bookingId, failedDetail.version, retryNote);
+        }}
+      >
+        {failedDetail ? (
+          <FormSection title="Thông tin nghiệm thu & Lỗi thông báo">
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
+              <p><span className="font-medium">Dịch vụ:</span> {failedDetail.serviceName}</p>
+              <p><span className="font-medium">Khách hàng:</span> {failedDetail.requesterProfileId}</p>
+              <p><span className="font-medium">Tóm tắt nghiệm thu:</span> {failedDetail.completionSummary || "—"}</p>
+              <p><span className="font-medium">Bằng chứng công việc:</span> {failedDetail.workEvidenceCount} tệp</p>
+              <p><span className="font-medium">Số lần gửi lại:</span> {failedDetail.notificationRetryCount}</p>
+              <p><span className="font-medium">Lý do lỗi:</span> {failedDetail.adminReviewReason || "—"}</p>
+            </div>
+            <FormField label="Ghi chú gửi lại (tùy chọn)" htmlFor="notif-retry-note">
+              <Input
+                id="notif-retry-note"
+                value={retryNote}
+                onChange={(e) => setRetryNote(e.target.value)}
+                placeholder="VD: Đã kiểm tra FCM token, phát lại thông báo"
+              />
+            </FormField>
+          </FormSection>
+        ) : null}
+      </FormDrawer>
 
       <FormDrawer
         open={Boolean(proposeTarget)}
