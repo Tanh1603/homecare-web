@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { requireOrgContext } from "@/shared/auth/guards";
 import { orgOpsApi } from "@/features/org-ops/api/org-ops.adapter";
 import { OrgWarrantiesTable } from "@/features/org-ops/components/org-warranties-table";
+import { OrgWarrantyClaimsPanel } from "@/features/warranties/components/org-warranty-claims-panel";
 import { PageHeader } from "@/shared/ui/page-header";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { ServerPagination } from "@/shared/ui/server-pagination";
@@ -48,6 +49,7 @@ export default async function OrgWarrantiesPage({
           />
         </>
       )}
+      <OrgWarrantyClaimsPanel />
     </div>
   );
 }
