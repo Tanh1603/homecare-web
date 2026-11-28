@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { browserHttpClient } from "@/shared/api/http-client";
 import { organizationsHttpAdapter } from "./organizations.http";
 
 const MOCK_ORG = {
@@ -10,13 +11,15 @@ const MOCK_ORG = {
 };
 
 describe("organizationsHttpAdapter If-Match ETag format", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => vi.restoreAllMocks());
 
   it("sends quoted v-prefixed If-Match on upgradeLegalEntity", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({ success: true, data: MOCK_ORG })
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const requestSpy = vi
+      .spyOn(browserHttpClient, "request")
+      .mockResolvedValue({
+        status: 200,
+        data: { success: true, data: MOCK_ORG },
+      });
 
     await organizationsHttpAdapter.upgradeLegalEntity(
       "org-1",
@@ -28,9 +31,9 @@ describe("organizationsHttpAdapter If-Match ETag format", () => {
       3
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/gateway/organizations/org-1/upgrade-legal-entity",
+    expect(requestSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "/organizations/org-1/upgrade-legal-entity",
         method: "POST",
         headers: expect.objectContaining({
           "If-Match": '"v3"',
@@ -40,10 +43,12 @@ describe("organizationsHttpAdapter If-Match ETag format", () => {
   });
 
   it("sends quoted v-prefixed If-Match on resubmit", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({ success: true, data: MOCK_ORG })
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const requestSpy = vi
+      .spyOn(browserHttpClient, "request")
+      .mockResolvedValue({
+        status: 200,
+        data: { success: true, data: MOCK_ORG },
+      });
 
     await organizationsHttpAdapter.resubmit(
       "org-1",
@@ -58,9 +63,9 @@ describe("organizationsHttpAdapter If-Match ETag format", () => {
       3
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/gateway/organizations/org-1/resubmit",
+    expect(requestSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "/organizations/org-1/resubmit",
         method: "PUT",
         headers: expect.objectContaining({
           "If-Match": '"v3"',

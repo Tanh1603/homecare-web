@@ -4,17 +4,9 @@ import * as React from "react";
 import { Eye } from "lucide-react";
 import type { OrgWarrantyItem } from "../api/org-ops.adapter";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate, formatShortId } from "@/shared/lib/utils";
 
 function formatWarrantySource(source?: string): string {
@@ -54,60 +46,97 @@ export function OrgWarrantiesTable({
 }) {
   const [selected, setSelected] = React.useState<OrgWarrantyItem | null>(null);
 
+  const columns = React.useMemo<DataTableColumn<OrgWarrantyItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã BH",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs" title={row.original.id}>
+            #{formatShortId(row.original.id)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "deviceOrPart",
+        header: "Thiết bị / Nội dung bảo hành",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.deviceOrPart}</span>
+        ),
+      },
+      {
+        accessorKey: "customerName",
+        header: "Khách hàng / Nguồn",
+        cell: ({ row }) => (
+          <div className="text-muted-foreground">
+            <div>{row.original.customerName}</div>
+            <div className="text-xs">{formatWarrantySource(row.original.source)}</div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "manufacturerRegistrationStatus",
+        header: "Đăng ký hãng",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatManufacturerRegistrationStatus(
+              row.original.manufacturerRegistrationStatus
+            )}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "startsOn",
+        header: "Bắt đầu",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {row.original.startsOn ? formatDate(row.original.startsOn) : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "expiresAt",
+        header: "Hết hạn",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {row.original.expiresAt ? formatDate(row.original.expiresAt) : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Chi tiết</div>,
+        cell: ({ row }) => (
+          <div className="text-right">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelected(row.original)}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Xem
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
   return (
     <>
-      <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Mã BH</TableHead>
-              <TableHead>Thiết bị / Nội dung bảo hành</TableHead>
-              <TableHead>Khách hàng / Nguồn</TableHead>
-              <TableHead>Đăng ký hãng</TableHead>
-              <TableHead>Bắt đầu</TableHead>
-              <TableHead>Hết hạn</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Chi tiết</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {initialWarranties.map((w) => (
-              <TableRow key={w.id}>
-                <TableCell className="font-mono text-xs" title={w.id}>
-                  #{formatShortId(w.id)}
-                </TableCell>
-                <TableCell className="font-medium">{w.deviceOrPart}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  <div>{w.customerName}</div>
-                  <div className="text-xs">{formatWarrantySource(w.source)}</div>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatManufacturerRegistrationStatus(w.manufacturerRegistrationStatus)}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {w.startsOn ? formatDate(w.startsOn) : "—"}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {w.expiresAt ? formatDate(w.expiresAt) : "—"}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={w.status} />
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelected(w)}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Xem
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataTable
+        hideSearch
+        serverSide
+        data={initialWarranties}
+        columns={columns}
+        emptyMessage="Chưa có phiếu bảo hành nào."
+      />
 
       <ContextInspector
         open={Boolean(selected)}

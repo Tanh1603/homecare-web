@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Eye, PackageCheck, Scale, UserCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -12,10 +13,11 @@ import {
   orgOpsHttpApi,
   type BookingDetailDto,
 } from "../api/org-ops.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import {
   Dialog,
   DialogContent,
@@ -28,14 +30,6 @@ import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Skeleton } from "@/shared/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDateTime, formatShortId, formatVnd } from "@/shared/lib/utils";
 
 const TERMINAL_BOOKING_STATUSES = new Set([
@@ -61,24 +55,24 @@ export function OrgBookingsTable({
   initialBookings: OrgBookingItem[];
 }) {
   const router = useRouter();
+  const statusFilter = useUiStore((s) => s.orgBookingsStatusFilter);
+  const setStatusFilter = useUiStore((s) => s.setOrgBookingsStatusFilter);
+
   const [bookings, setBookings] =
     React.useState<OrgBookingItem[]>(initialBookings);
   const [cancelTarget, setCancelTarget] = React.useState<OrgBookingItem | null>(
     null
   );
   const [reason, setReason] = React.useState("");
-  const [busyId, setBusyId] = React.useState<string | null>(null);
 
   const [assignTarget, setAssignTarget] =
     React.useState<OrgBookingItem | null>(null);
   const [technicians, setTechnicians] = React.useState<OrgTechnicianItem[]>([]);
   const [selectedTechId, setSelectedTechId] = React.useState("");
   const [assignReason, setAssignReason] = React.useState("");
-  const [loadingTechs, setLoadingTechs] = React.useState(false);
 
   const [detailTarget, setDetailTarget] =
     React.useState<BookingDetailDto | null>(null);
-  const [loadingDetail, setLoadingDetail] = React.useState(false);
   const [disputeBookingId, setDisputeBookingId] = React.useState<string | null>(
     null
   );
@@ -86,55 +80,49 @@ export function OrgBookingsTable({
     null
   );
 
-  async function openAssignDialog(b: OrgBookingItem) {
-    setAssignTarget(b);
-    setSelectedTechId("");
-    setAssignReason("");
-    setLoadingTechs(true);
-    try {
-      const list = await orgOpsHttpApi.listActiveTechnicians(organizationId);
-      const filtered = list.filter(
-        (t) => t.status === "ACTIVE" && t.id !== b.technicianId
-      );
-      setTechnicians(filtered);
-      if (filtered.length > 0) setSelectedTechId(filtered[0].id);
-    } catch (err) {
+  const loadTechsMutation = useMutation({
+    mutationFn: () => orgOpsHttpApi.listActiveTechnicians(organizationId),
+    onError: (err) => {
       toast.error(
         err instanceof Error
           ? err.message
           : "Không thể tải danh sách kỹ thuật viên"
       );
       setTechnicians([]);
-    } finally {
-      setLoadingTechs(false);
-    }
-  }
+    },
+  });
 
-  async function handleAssignConfirm(e: React.FormEvent) {
-    e.preventDefault();
-    if (!assignTarget || !selectedTechId) return;
-    setBusyId(assignTarget.id);
-    try {
-      const updated = SAME_ORG_REASSIGN_STATUSES.has(assignTarget.status)
-        ? await disputesHttpApi.orgReassignSameOrgTechnician(
+  const assignMutation = useMutation({
+    mutationFn: ({
+      target,
+      technicianId,
+      note,
+    }: {
+      target: OrgBookingItem;
+      technicianId: string;
+      note: string;
+    }) =>
+      SAME_ORG_REASSIGN_STATUSES.has(target.status)
+        ? disputesHttpApi.orgReassignSameOrgTechnician(
             organizationId,
-            assignTarget.id,
-            { technicianId: selectedTechId, note: assignReason || undefined },
-            assignTarget.version
+            target.id,
+            { technicianId, note: note || undefined },
+            target.version
           )
-        : await orgOpsHttpApi.assignTechnician(
+        : orgOpsHttpApi.assignTechnician(
             organizationId,
-            assignTarget.id,
-            { technicianId: selectedTechId, reason: assignReason },
-            assignTarget.version
-          );
+            target.id,
+            { technicianId, reason: note },
+            target.version
+          ),
+    onSuccess: (updated, vars) => {
       setBookings((prev) =>
         prev.map((b) =>
-          b.id === assignTarget.id
+          b.id === vars.target.id
             ? {
                 ...b,
                 status: updated.status,
-                technicianId: updated.assignedTechnicianId ?? selectedTechId,
+                technicianId: updated.assignedTechnicianId ?? vars.technicianId,
                 technicianName: updated.assignedTechnicianName ?? b.technicianName,
                 version: updated.version ?? b.version,
               }
@@ -142,20 +130,21 @@ export function OrgBookingsTable({
         )
       );
       toast.success(
-        assignTarget.status === "ASSIGNED"
+        vars.target.status === "ASSIGNED"
           ? "Đã đổi kỹ thuật viên"
           : "Đã điều phối kỹ thuật viên"
       );
       setAssignTarget(null);
       router.refresh();
-    } catch (err) {
+    },
+    onError: async (err, vars) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể điều phối kỹ thuật viên"
       );
       try {
         const latest = await orgOpsHttpApi.getBooking(
           organizationId,
-          assignTarget.id
+          vars.target.id
         );
         setAssignTarget((prev) =>
           prev && prev.id === latest.id
@@ -184,54 +173,34 @@ export function OrgBookingsTable({
       } catch {
         // Ignore refresh error; user already saw the assign failure toast.
       }
-    } finally {
-      setBusyId(null);
-    }
-  }
+    },
+  });
 
-  async function openDetail(b: OrgBookingItem) {
-    setLoadingDetail(true);
-    setDetailTarget({
-      id: b.id,
-      requesterProfileId: "",
-      requesterName: b.customerName,
-      serviceName: b.serviceName,
-      assignedTechnicianName: b.technicianName,
-      address: b.address ?? "",
-      addressSnapshot: b.addressSnapshot ?? null,
-      status: b.status,
-      allocationStatus: "",
-      quotedPrice: b.totalAmount,
-      preferredStart: b.scheduledAt,
-      createdAt: b.createdAt,
-      workUpdates: [],
-    });
-    try {
-      const detail = await orgOpsHttpApi.getBooking(organizationId, b.id);
+  const detailMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      orgOpsHttpApi.getBooking(organizationId, bookingId),
+    onSuccess: (detail) => {
       setDetailTarget(detail);
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể tải chi tiết booking"
       );
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
+    },
+  });
 
-  async function handleCancelConfirm(e: React.FormEvent) {
-    e.preventDefault();
-    if (!cancelTarget) return;
-    setBusyId(cancelTarget.id);
-    try {
-      const updated = await orgOpsHttpApi.cancelBooking(
+  const cancelMutation = useMutation({
+    mutationFn: (vars: { target: OrgBookingItem; reason: string }) =>
+      orgOpsHttpApi.cancelBooking(
         organizationId,
-        cancelTarget.id,
-        cancelTarget.version,
-        reason
-      );
+        vars.target.id,
+        vars.target.version,
+        vars.reason
+      ),
+    onSuccess: (updated, vars) => {
       setBookings((prev) =>
         prev.map((b) =>
-          b.id === cancelTarget.id
+          b.id === vars.target.id
             ? { ...b, status: updated.status ?? "CANCELLED" }
             : b
         )
@@ -240,142 +209,273 @@ export function OrgBookingsTable({
       setCancelTarget(null);
       setReason("");
       router.refresh();
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Không thể hủy lịch hẹn");
-    } finally {
-      setBusyId(null);
-    }
+    },
+  });
+
+  const busyId = assignMutation.isPending
+    ? assignMutation.variables?.target.id ?? null
+    : cancelMutation.isPending
+      ? cancelMutation.variables?.target.id ?? null
+      : null;
+  const loadingTechs = loadTechsMutation.isPending;
+  const loadingDetail = detailMutation.isPending;
+
+  const openAssignDialog = React.useCallback(
+    (b: OrgBookingItem) => {
+      setAssignTarget(b);
+      setSelectedTechId("");
+      setAssignReason("");
+      loadTechsMutation.mutate(undefined, {
+        onSuccess: (list) => {
+          const filtered = list.filter(
+            (t) => t.status === "ACTIVE" && t.id !== b.technicianId
+          );
+          setTechnicians(filtered);
+          if (filtered.length > 0) setSelectedTechId(filtered[0].id);
+        },
+      });
+    },
+    [loadTechsMutation]
+  );
+
+  function handleAssignConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    if (!assignTarget || !selectedTechId) return;
+    assignMutation.mutate({
+      target: assignTarget,
+      technicianId: selectedTechId,
+      note: assignReason,
+    });
   }
+
+  const openDetail = React.useCallback(
+    (b: OrgBookingItem) => {
+      setDetailTarget({
+        id: b.id,
+        requesterProfileId: "",
+        requesterName: b.customerName,
+        serviceName: b.serviceName,
+        assignedTechnicianName: b.technicianName,
+        address: b.address ?? "",
+        addressSnapshot: b.addressSnapshot ?? null,
+        status: b.status,
+        allocationStatus: "",
+        quotedPrice: b.totalAmount,
+        preferredStart: b.scheduledAt,
+        createdAt: b.createdAt,
+        workUpdates: [],
+      });
+      detailMutation.mutate(b.id);
+    },
+    [detailMutation]
+  );
+
+  function handleCancelConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cancelTarget) return;
+    cancelMutation.mutate({ target: cancelTarget, reason });
+  }
+
+  const visibleBookings = React.useMemo(
+    () =>
+      statusFilter === "ALL"
+        ? bookings
+        : bookings.filter((b) => b.status === statusFilter),
+    [bookings, statusFilter]
+  );
+
+  const columns = React.useMemo<DataTableColumn<OrgBookingItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs" title={row.original.id}>
+            #{formatShortId(row.original.id)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "customerName",
+        header: "Khách hàng",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.customerName}</span>
+        ),
+      },
+      {
+        accessorKey: "serviceName",
+        header: "Dịch vụ",
+      },
+      {
+        accessorKey: "purpose",
+        header: "Luồng",
+        cell: ({ row }) => {
+          const b = row.original;
+          return (
+            <div className="flex flex-col items-start gap-1">
+              <Badge variant={b.purpose === "INSTALLATION" ? "warning" : "secondary"}>
+                {b.purpose === "INSTALLATION" ? "Lắp đặt" : "Dịch vụ"}
+              </Badge>
+              {b.purpose === "INSTALLATION" ? (
+                <span className="text-xs text-muted-foreground">
+                  {b.productReady ? "Sản phẩm đã giao" : "Chờ giao sản phẩm"}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "technicianName",
+        header: "Kỹ thuật viên",
+        cell: ({ row }) => (
+          <span>{row.original.technicianName ?? "Chưa phân công"}</span>
+        ),
+      },
+      {
+        accessorKey: "scheduledAt",
+        header: "Lịch hẹn",
+        cell: ({ row }) => {
+          const b = row.original;
+          return (
+            <div className="text-xs text-muted-foreground">
+              <p>{formatDateTime(b.scheduledAt)}</p>
+              {b.createdAt ? (
+                <p className="text-[11px] opacity-75">
+                  Tạo: {formatDateTime(b.createdAt)}
+                </p>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "totalAmount",
+        header: "Tổng tiền",
+        cell: ({ row }) => <span>{formatVnd(row.original.totalAmount)}</span>,
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => (
+          <StatusBadge status={row.original.status} domain="booking" />
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const b = row.original;
+          const canAssign =
+            b.status === "REQUESTED" ||
+            b.status === "ASSIGNED" ||
+            SAME_ORG_REASSIGN_STATUSES.has(b.status);
+          const canRespondDispute =
+            b.status === "DISPUTED" || b.status === "ACCEPTED";
+          const canReviewParts =
+            SAME_ORG_REASSIGN_STATUSES.has(b.status) || b.status === "COMPLETED";
+          const canCancel = !TERMINAL_BOOKING_STATUSES.has(b.status);
+          return (
+            <div className="text-right">
+              <RowActionsMenu
+                ariaLabel={`Thao tác cho lịch hẹn #${formatShortId(b.id)}`}
+                disabled={busyId === b.id}
+                groups={[
+                  {
+                    id: "view",
+                    items: [
+                      {
+                        id: "detail",
+                        label: "Xem chi tiết",
+                        icon: Eye,
+                        onSelect: () => openDetail(b),
+                      },
+                      {
+                        id: "assign",
+                        label:
+                          b.status === "ASSIGNED" ||
+                          SAME_ORG_REASSIGN_STATUSES.has(b.status)
+                            ? "Đổi kỹ thuật viên"
+                            : "Điều phối kỹ thuật viên",
+                        icon: UserCheck,
+                        hidden: !canAssign,
+                        onSelect: () => openAssignDialog(b),
+                      },
+                      {
+                        id: "parts-review",
+                        label: "Duyệt linh kiện",
+                        icon: PackageCheck,
+                        hidden: !canReviewParts,
+                        onSelect: () => setPartsBookingId(b.id),
+                      },
+                      {
+                        id: "dispute-response",
+                        label: "Phản hồi tranh chấp",
+                        icon: Scale,
+                        hidden: !canRespondDispute,
+                        onSelect: () => setDisputeBookingId(b.id),
+                      },
+                    ],
+                  },
+                  {
+                    id: "danger",
+                    items: [
+                      {
+                        id: "cancel",
+                        label: "Hủy lịch hẹn",
+                        icon: XCircle,
+                        destructive: true,
+                        hidden: !canCancel,
+                        onSelect: () => {
+                          setCancelTarget(b);
+                          setReason("");
+                        },
+                      },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+          );
+        },
+      },
+    ],
+    [busyId, openAssignDialog, openDetail]
+  );
 
   return (
     <>
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Mã</TableHead>
-              <TableHead>Khách hàng</TableHead>
-              <TableHead>Dịch vụ</TableHead>
-              <TableHead>Luồng</TableHead>
-              <TableHead>Kỹ thuật viên</TableHead>
-              <TableHead>Lịch hẹn</TableHead>
-              <TableHead>Tổng tiền</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {bookings.map((b) => {
-              const canAssign =
-                b.status === "REQUESTED" ||
-                b.status === "ASSIGNED" ||
-                SAME_ORG_REASSIGN_STATUSES.has(b.status);
-              const canRespondDispute =
-                b.status === "DISPUTED" || b.status === "ACCEPTED";
-              const canReviewParts =
-                SAME_ORG_REASSIGN_STATUSES.has(b.status) ||
-                b.status === "COMPLETED";
-              const canCancel = !TERMINAL_BOOKING_STATUSES.has(b.status);
-              return (
-                <TableRow key={b.id}>
-                  <TableCell className="font-mono text-xs" title={b.id}>
-                    #{formatShortId(b.id)}
-                  </TableCell>
-                  <TableCell className="font-medium">{b.customerName}</TableCell>
-                  <TableCell>{b.serviceName}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <Badge variant={b.purpose === "INSTALLATION" ? "warning" : "secondary"}>
-                        {b.purpose === "INSTALLATION" ? "Lắp đặt" : "Dịch vụ"}
-                      </Badge>
-                      {b.purpose === "INSTALLATION" ? (
-                        <span className="text-xs text-muted-foreground">
-                          {b.productReady ? "Sản phẩm đã giao" : "Chờ giao sản phẩm"}
-                        </span>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>{b.technicianName ?? "Chưa phân công"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    <p>{formatDateTime(b.scheduledAt)}</p>
-                    {b.createdAt ? (
-                      <p className="text-[11px] opacity-75">
-                        Tạo: {formatDateTime(b.createdAt)}
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{formatVnd(b.totalAmount)}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={b.status} domain="booking" />
-                  </TableCell>
-                  <TableCell className="w-[1%] whitespace-nowrap text-right">
-                    <RowActionsMenu
-                      ariaLabel={`Thao tác cho lịch hẹn #${formatShortId(b.id)}`}
-                      disabled={busyId === b.id}
-                      groups={[
-                        {
-                          id: "view",
-                          items: [
-                            {
-                              id: "detail",
-                              label: "Xem chi tiết",
-                              icon: Eye,
-                              onSelect: () => openDetail(b),
-                            },
-                            {
-                              id: "assign",
-                              label:
-                                b.status === "ASSIGNED" ||
-                                SAME_ORG_REASSIGN_STATUSES.has(b.status)
-                                  ? "Đổi kỹ thuật viên"
-                                  : "Điều phối kỹ thuật viên",
-                              icon: UserCheck,
-                              hidden: !canAssign,
-                              onSelect: () => openAssignDialog(b),
-                            },
-                            {
-                              id: "parts-review",
-                              label: "Duyệt linh kiện",
-                              icon: PackageCheck,
-                              hidden: !canReviewParts,
-                              onSelect: () => setPartsBookingId(b.id),
-                            },
-                            {
-                              id: "dispute-response",
-                              label: "Phản hồi tranh chấp",
-                              icon: Scale,
-                              hidden: !canRespondDispute,
-                              onSelect: () => setDisputeBookingId(b.id),
-                            },
-                          ],
-                        },
-                        {
-                          id: "danger",
-                          items: [
-                            {
-                              id: "cancel",
-                              label: "Hủy lịch hẹn",
-                              icon: XCircle,
-                              destructive: true,
-                              hidden: !canCancel,
-                              onSelect: () => {
-                                setCancelTarget(b);
-                                setReason("");
-                              },
-                            },
-                          ],
-                        },
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        </div>
-      </Card>
+      <DataTable
+        hideSearch
+        serverSide
+        data={visibleBookings}
+        columns={columns}
+        emptyMessage="Không có lịch hẹn phù hợp với trạng thái đã chọn."
+        toolbarSlot={
+          <div className="w-56">
+            <NativeSelect
+              aria-label="Lọc trạng thái lịch hẹn"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-xs font-medium"
+            >
+              <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
+              <NativeSelectOption value="REQUESTED">Chờ điều phối</NativeSelectOption>
+              <NativeSelectOption value="ASSIGNED">Đã điều phối</NativeSelectOption>
+              <NativeSelectOption value="IN_PROGRESS">Đang thực hiện</NativeSelectOption>
+              <NativeSelectOption value="WAITING_FOR_PARTS">Chờ linh kiện</NativeSelectOption>
+              <NativeSelectOption value="COMPLETED_PENDING_ACCEPTANCE">Chờ nghiệm thu</NativeSelectOption>
+              <NativeSelectOption value="REVISION_REQUESTED">Yêu cầu làm lại</NativeSelectOption>
+              <NativeSelectOption value="DISPUTED">Tranh chấp</NativeSelectOption>
+              <NativeSelectOption value="ACCEPTED">Đã nghiệm thu</NativeSelectOption>
+              <NativeSelectOption value="CANCELLED">Đã hủy</NativeSelectOption>
+            </NativeSelect>
+          </div>
+        }
+      />
 
       <OrgDisputeResponseDrawer
         organizationId={organizationId}

@@ -1,7 +1,9 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GovernanceSettingsPanel } from "@/features/admin/components/governance-settings-panel";
 import { organizationsHttpAdapter } from "@/features/organizations/api/organizations.http";
+import { useUiStore } from "@/shared/store/ui-store";
 
 vi.mock("@/features/organizations/api/organizations.http", () => ({
   organizationsHttpAdapter: {
@@ -10,9 +12,17 @@ vi.mock("@/features/organizations/api/organizations.http", () => ({
   },
 }));
 
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 describe("GovernanceSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useUiStore.getState().resetUiStore();
   });
 
   it("loads known and dynamic future settings, filters by search, and saves modified values", async () => {
@@ -38,7 +48,7 @@ describe("GovernanceSettingsPanel", () => {
       settingValue: "5",
     });
 
-    render(<GovernanceSettingsPanel />);
+    renderWithQuery(<GovernanceSettingsPanel />);
 
     // Known setting + dynamic future setting both render
     const resubmitInput = await screen.findByLabelText(

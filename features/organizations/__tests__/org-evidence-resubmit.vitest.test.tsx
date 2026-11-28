@@ -1,5 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import { registerOrganizationSchema } from "@/features/organizations/contracts/organization";
 import { OrgEvidenceUploader } from "@/features/organizations/components/org-evidence-uploader";
 import { OrgResubmitForm } from "@/features/organizations/components/org-resubmit-form";
@@ -120,7 +128,7 @@ describe("Organization evidence presign upload & resubmit", () => {
       },
     ]);
 
-    render(
+    renderWithQuery(
       <OrgResubmitForm
         organization={{
           id: "org-1",
@@ -171,7 +179,7 @@ describe("Organization evidence presign upload & resubmit", () => {
       },
     ]);
 
-    render(
+    renderWithQuery(
       <OrgResubmitForm
         organization={{
           id: "org-1",

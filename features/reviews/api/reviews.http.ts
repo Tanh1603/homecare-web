@@ -1,11 +1,10 @@
 import {
   extractPageItems,
   extractPaginationMeta,
-  unwrapApiResponse,
-  type ApiResponse,
   type PageResponse,
   type PaginationMeta,
 } from "@/shared/api/api-envelope";
+import { gatewayHeaders, requestGateway } from "@/shared/api/http-client";
 
 export interface AdminReviewItem {
   id: string;
@@ -41,17 +40,6 @@ export interface AdminResyncRatingResult {
   snapshots: ProviderRatingSnapshot[];
 }
 
-function adminHeaders(version?: number): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-homecare-scope": "personal",
-  };
-  if (typeof version === "number") {
-    headers["If-Match"] = `"v${version}"`;
-  }
-  return headers;
-}
-
 export const reviewsHttpApi = {
   async adminListServiceReviews(params?: {
     status?: string;
@@ -61,24 +49,24 @@ export const reviewsHttpApi = {
     page?: number;
     size?: number;
   }): Promise<{ items: AdminReviewItem[]; pagination: PaginationMeta }> {
-    const query = new URLSearchParams({
+    const query: Record<string, string> = {
       page: String(params?.page ?? 1),
       size: String(params?.size ?? 20),
-    });
-    if (params?.status && params.status !== "ALL") query.set("status", params.status);
-    if (params?.providerId?.trim()) query.set("providerId", params.providerId.trim());
-    if (typeof params?.rating === "number") query.set("rating", String(params.rating));
-    if (params?.q?.trim()) query.set("q", params.q.trim());
+    };
+    if (params?.status && params.status !== "ALL") query.status = params.status;
+    if (params?.providerId?.trim()) query.providerId = params.providerId.trim();
+    if (typeof params?.rating === "number") query.rating = String(params.rating);
+    if (params?.q?.trim()) query.q = params.q.trim();
 
-    const res = await fetch(`/api/gateway/admin/service-reviews?${query.toString()}`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "personal" },
+    const data = await requestGateway<PageResponse<AdminReviewItem> | AdminReviewItem[]>({
+      method: "GET",
+      url: "/admin/service-reviews",
+      params: query,
+      headers: gatewayHeaders({ personal: true }),
     });
-    const json = (await res.json()) as ApiResponse<PageResponse<AdminReviewItem> | AdminReviewItem[]>;
-    const unwrapped = unwrapApiResponse(json);
     return {
-      items: extractPageItems(unwrapped),
-      pagination: extractPaginationMeta(unwrapped, params?.page ?? 1, params?.size ?? 20),
+      items: extractPageItems(data),
+      pagination: extractPaginationMeta(data, params?.page ?? 1, params?.size ?? 20),
     };
   },
 
@@ -87,16 +75,12 @@ export const reviewsHttpApi = {
     reason: string,
     version?: number
   ): Promise<AdminReviewItem> {
-    const res = await fetch(
-      `/api/gateway/admin/service-reviews/${encodeURIComponent(reviewId)}/hide`,
-      {
-        method: "POST",
-        headers: adminHeaders(version),
-        body: JSON.stringify({ reason: reason.trim() }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<AdminReviewItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<AdminReviewItem>({
+      method: "POST",
+      url: `/admin/service-reviews/${encodeURIComponent(reviewId)}/hide`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: { reason: reason.trim() },
+    });
   },
 
   async adminRestoreServiceReview(
@@ -104,25 +88,20 @@ export const reviewsHttpApi = {
     note?: string,
     version?: number
   ): Promise<AdminReviewItem> {
-    const res = await fetch(
-      `/api/gateway/admin/service-reviews/${encodeURIComponent(reviewId)}/restore`,
-      {
-        method: "POST",
-        headers: adminHeaders(version),
-        body: JSON.stringify({ note: note?.trim() || undefined }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<AdminReviewItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<AdminReviewItem>({
+      method: "POST",
+      url: `/admin/service-reviews/${encodeURIComponent(reviewId)}/restore`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: { note: note?.trim() || undefined },
+    });
   },
 
   async adminResyncRating(providerId?: string): Promise<AdminResyncRatingResult> {
-    const res = await fetch("/api/gateway/admin/service-reviews/resync-rating", {
+    return requestGateway<AdminResyncRatingResult>({
       method: "POST",
-      headers: adminHeaders(),
-      body: JSON.stringify(providerId?.trim() ? { providerId: providerId.trim() } : {}),
+      url: "/admin/service-reviews/resync-rating",
+      headers: gatewayHeaders({ personal: true }),
+      data: providerId?.trim() ? { providerId: providerId.trim() } : {},
     });
-    const json = (await res.json()) as ApiResponse<AdminResyncRatingResult>;
-    return unwrapApiResponse(json);
   },
 };

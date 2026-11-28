@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { warrantiesHttpApi, type PartsRequestItem } from "../api/warranties.http";
 import { Button } from "@/shared/ui/button";
@@ -21,48 +22,75 @@ export function OrgPartsReviewDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [items, setItems] = React.useState<PartsRequestItem[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = React.useState<PartsRequestItem | null>(null);
   const [costPrice, setCostPrice] = React.useState("");
   const [unitPrice, setUnitPrice] = React.useState("");
   const [reason, setReason] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!open || !bookingId) return;
-    warrantiesHttpApi
-      .orgListPartsRequests(bookingId)
-      .then(setItems)
-      .catch(() => setItems([]));
-  }, [open, bookingId]);
+  const queryKey = ["org", "parts-requests", bookingId] as const;
 
-  async function handleDecision(approved: boolean) {
+  const partsQuery = useQuery({
+    queryKey,
+    queryFn: () => warrantiesHttpApi.orgListPartsRequests(bookingId!),
+    enabled: open && Boolean(bookingId),
+  });
+
+  const decisionMutation = useMutation({
+    mutationFn: (vars: {
+      bookingId: string;
+      requestId: string;
+      approved: boolean;
+      costPrice?: number;
+      unitPrice?: number;
+      reason?: string;
+      version?: number;
+    }) =>
+      warrantiesHttpApi.orgReviewPartsRequest(
+        vars.bookingId,
+        vars.requestId,
+        {
+          approved: vars.approved,
+          costPrice: vars.costPrice,
+          unitPrice: vars.unitPrice,
+          reason: vars.reason,
+        },
+        vars.version
+      ),
+    onSuccess: (updated, vars) => {
+      queryClient.setQueryData<PartsRequestItem[]>(queryKey, (prev = []) =>
+        prev.map((it) => (it.id === updated.id ? updated : it))
+      );
+      setSelected(null);
+      toast.success(
+        vars.approved
+          ? "Đã duyệt linh kiện EXTERNAL_SUPPLIER"
+          : "Đã từ chối yêu cầu linh kiện"
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    },
+  });
+
+  const items = partsQuery.data ?? [];
+  const saving = decisionMutation.isPending;
+
+  function handleDecision(approved: boolean) {
     if (!bookingId || !selected) return;
     if (!approved && !reason.trim()) {
       toast.error("Vui lòng nhập lý do từ chối linh kiện.");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await warrantiesHttpApi.orgReviewPartsRequest(
-        bookingId,
-        selected.id,
-        {
-          approved,
-          costPrice: costPrice ? Number(costPrice) : undefined,
-          unitPrice: unitPrice ? Number(unitPrice) : undefined,
-          reason: reason.trim() || undefined,
-        },
-        selected.version
-      );
-      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
-      setSelected(null);
-      toast.success(approved ? "Đã duyệt linh kiện EXTERNAL_SUPPLIER" : "Đã từ chối yêu cầu linh kiện");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setSaving(false);
-    }
+    decisionMutation.mutate({
+      bookingId,
+      requestId: selected.id,
+      approved,
+      costPrice: costPrice ? Number(costPrice) : undefined,
+      unitPrice: unitPrice ? Number(unitPrice) : undefined,
+      reason: reason.trim() || undefined,
+      version: selected.version,
+    });
   }
 
   return (
@@ -77,13 +105,15 @@ export function OrgPartsReviewDrawer({
           onOpenChange(false);
           return;
         }
-        void handleDecision(true);
+        handleDecision(true);
       }}
       saving={saving}
       submitLabel={selected ? "Duyệt linh kiện" : "Đóng"}
     >
       <FormSection title="Danh sách linh kiện của lịch hẹn">
-        {items.length === 0 ? (
+        {partsQuery.isPending ? (
+          <p className="text-xs text-muted-foreground">Đang tải yêu cầu linh kiện...</p>
+        ) : items.length === 0 ? (
           <p className="text-xs text-muted-foreground">Chưa có yêu cầu linh kiện nào.</p>
         ) : (
           <div className="space-y-2">
@@ -137,7 +167,7 @@ export function OrgPartsReviewDrawer({
             variant="destructive"
             size="sm"
             disabled={saving}
-            onClick={() => void handleDecision(false)}
+            onClick={() => handleDecision(false)}
           >
             Từ chối yêu cầu này
           </Button>

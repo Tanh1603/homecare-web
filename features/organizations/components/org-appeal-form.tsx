@@ -1,55 +1,59 @@
 "use client";
 
-import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { organizationsHttpAdapter } from "@/features/organizations/api/organizations.http";
 import { Button } from "@/shared/ui/button";
+import { FormField } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 
-export function OrgAppealForm({ organizationId }: { organizationId: string }) {
-  const [enforcementId, setEnforcementId] = React.useState("");
-  const [appealReason, setAppealReason] = React.useState("");
-  const [evidenceRefs, setEvidenceRefs] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
-  const [submittedResult, setSubmittedResult] = React.useState<{
-    id: string;
-    status: string;
-  } | null>(null);
+const orgAppealSchema = z.object({
+  enforcementId: z.string().trim().min(1, "Vui lòng nhập mã quyết định chế tài."),
+  appealReason: z.string().trim().min(1, "Vui lòng nhập nội dung giải trình và khắc phục."),
+  evidenceRefs: z.string().trim().optional(),
+});
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!enforcementId.trim() || !appealReason.trim()) {
-      toast.error("Vui lòng nhập mã quyết định chế tài và lý do kháng cáo.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await organizationsHttpAdapter.submitAppeal(organizationId, {
-        enforcementId: enforcementId.trim(),
-        appealReason: appealReason.trim(),
-        evidenceRefs: evidenceRefs.trim() || undefined,
-      });
-      setSubmittedResult({ id: res.id, status: res.status });
+type OrgAppealValues = z.infer<typeof orgAppealSchema>;
+
+export function OrgAppealForm({ organizationId }: { organizationId: string }) {
+  const form = useForm<OrgAppealValues>({
+    resolver: zodResolver(orgAppealSchema),
+    defaultValues: {
+      enforcementId: "",
+      appealReason: "",
+      evidenceRefs: "",
+    },
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: (values: OrgAppealValues) =>
+      organizationsHttpAdapter.submitAppeal(organizationId, {
+        enforcementId: values.enforcementId.trim(),
+        appealReason: values.appealReason.trim(),
+        evidenceRefs: values.evidenceRefs?.trim() || undefined,
+      }),
+    onSuccess: () => {
       toast.success("Đã gửi đơn kháng cáo. Admin sẽ xem xét trong 5 ngày làm việc.");
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể gửi đơn kháng cáo."
       );
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    },
+  });
 
-  if (submittedResult) {
+  if (submitMutation.data) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
         <p className="font-medium text-foreground">
-          Đã tiếp nhận kháng cáo ({submittedResult.status})
+          Đã tiếp nhận kháng cáo ({submitMutation.data.status})
         </p>
         <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-          Mã hồ sơ: {submittedResult.id}
+          Mã hồ sơ: {submitMutation.data.id}
         </p>
       </div>
     );
@@ -57,7 +61,7 @@ export function OrgAppealForm({ organizationId }: { organizationId: string }) {
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={form.handleSubmit((values) => submitMutation.mutate(values))}
       className="space-y-3 rounded-lg border border-border bg-muted/20 p-4"
     >
       <div className="space-y-1">
@@ -68,43 +72,47 @@ export function OrgAppealForm({ organizationId }: { organizationId: string }) {
           Chủ sở hữu tổ chức được gửi 1 lần cho mỗi quyết định chế tài trong thời hạn kháng cáo.
         </p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="appeal-enforcement-id">Mã quyết định chế tài</Label>
+      <FormField
+        label="Mã quyết định chế tài"
+        htmlFor="appeal-enforcement-id"
+        required
+        error={form.formState.errors.enforcementId?.message}
+      >
         <Input
           id="appeal-enforcement-id"
           placeholder="Nhập mã quyết định chế tài"
-          value={enforcementId}
-          onChange={(e) => setEnforcementId(e.target.value)}
-          disabled={submitting}
-          required
+          disabled={submitMutation.isPending}
+          {...form.register("enforcementId")}
         />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="appeal-reason">Nội dung giải trình & khắc phục</Label>
+      </FormField>
+      <FormField
+        label="Nội dung giải trình & khắc phục"
+        htmlFor="appeal-reason"
+        required
+        error={form.formState.errors.appealReason?.message}
+      >
         <Textarea
           id="appeal-reason"
           rows={3}
           placeholder="Nêu rõ lý do và biện pháp đã khắc phục..."
-          value={appealReason}
-          onChange={(e) => setAppealReason(e.target.value)}
-          disabled={submitting}
-          required
+          disabled={submitMutation.isPending}
+          {...form.register("appealReason")}
         />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="appeal-evidence">
-          Tài liệu / Bằng chứng bổ sung (tùy chọn)
-        </Label>
+      </FormField>
+      <FormField
+        label="Tài liệu / Bằng chứng bổ sung (tùy chọn)"
+        htmlFor="appeal-evidence"
+        error={form.formState.errors.evidenceRefs?.message}
+      >
         <Input
           id="appeal-evidence"
           placeholder="Đường dẫn hoặc mã tài liệu đối chiếu"
-          value={evidenceRefs}
-          onChange={(e) => setEvidenceRefs(e.target.value)}
-          disabled={submitting}
+          disabled={submitMutation.isPending}
+          {...form.register("evidenceRefs")}
         />
-      </div>
-      <Button type="submit" size="sm" disabled={submitting}>
-        {submitting ? "Đang gửi..." : "Gửi đơn kháng cáo"}
+      </FormField>
+      <Button type="submit" size="sm" disabled={submitMutation.isPending}>
+        {submitMutation.isPending ? "Đang gửi..." : "Gửi đơn kháng cáo"}
       </Button>
     </form>
   );

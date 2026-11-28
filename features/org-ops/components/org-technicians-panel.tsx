@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Calendar, Pencil, Plus, Star, Trash2 } from "lucide-react";
@@ -20,8 +21,8 @@ import {
 } from "@/features/organizations/components/account-provisioning-step";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
@@ -29,14 +30,6 @@ import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDateTime } from "@/shared/lib/utils";
 
 function todayLocalDate(): string {
@@ -63,7 +56,6 @@ export function OrgTechniciansPanel({
   const [editTarget, setEditTarget] = React.useState<OrgTechnicianItem | null>(
     null
   );
-  const [saving, setSaving] = React.useState(false);
 
   const [provisioned, setProvisioned] =
     React.useState<ProvisionedAccountInfo | null>(null);
@@ -82,7 +74,6 @@ export function OrgTechniciansPanel({
     ScheduleExceptionItem[]
   >([]);
   const [scheduleLoadedAt, setScheduleLoadedAt] = React.useState(0);
-  const [loadingSchedules, setLoadingSchedules] = React.useState(false);
   const [scheduleDate, setScheduleDate] = React.useState(todayLocalDate);
   const [startTime, setStartTime] = React.useState("08:00:00");
   const [endTime, setEndTime] = React.useState("17:00:00");
@@ -95,6 +86,164 @@ export function OrgTechniciansPanel({
     status,
   });
   const isDirty = drawerOpen && currentSnapshot !== initialSnapshot;
+
+  const saveTechMutation = useMutation({
+    mutationFn: async (vars: {
+      editTarget: OrgTechnicianItem | null;
+      provisionedUserId?: string;
+      fullName: string;
+      specialties: string[];
+      experienceYears: number;
+      status: "ACTIVE" | "INACTIVE";
+    }) => {
+      if (vars.editTarget) {
+        const updated = await orgOpsHttpApi.updateTechnician(
+          organizationId,
+          vars.editTarget.id,
+          {
+            fullName: vars.fullName,
+            specialties: vars.specialties,
+            experienceYears: vars.experienceYears,
+            status: vars.status,
+          }
+        );
+        return { mode: "update" as const, updated, specialties: vars.specialties };
+      }
+      const created = await orgOpsHttpApi.createTechnician(organizationId, {
+        profileId: vars.provisionedUserId ?? "",
+        fullName: vars.fullName,
+        specialties: vars.specialties,
+        experienceYears: vars.experienceYears,
+        status: vars.status,
+      });
+      return { mode: "create" as const, created, specialties: vars.specialties };
+    },
+    onSuccess: (res, vars) => {
+      if (res.mode === "update" && vars.editTarget) {
+        setTechs((prev) =>
+          prev.map((t) =>
+            t.id === vars.editTarget?.id
+              ? {
+                  ...t,
+                  ...res.updated,
+                  specialty:
+                    res.updated.specialties?.join(", ") ||
+                    res.specialties.join(", ") ||
+                    t.specialty,
+                }
+              : t
+          )
+        );
+        toast.success("Đã cập nhật kỹ thuật viên");
+      } else if (res.mode === "create") {
+        setTechs((prev) => [
+          {
+            ...res.created,
+            phone: res.created.profileId,
+            specialty:
+              res.created.specialties?.join(", ") || res.specialties.join(", "),
+            rating: 0,
+          },
+          ...prev,
+        ]);
+        toast.success("Đã thêm kỹ thuật viên");
+      }
+      setDrawerOpen(false);
+      router.refresh();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể lưu kỹ thuật viên"
+      );
+    },
+  });
+
+  const deleteTechMutation = useMutation({
+    mutationFn: (t: OrgTechnicianItem) =>
+      orgOpsHttpApi.deleteTechnician(organizationId, t.id),
+    onSuccess: (_res, t) => {
+      setTechs((prev) => prev.filter((item) => item.id !== t.id));
+      toast.success("Đã xóa kỹ thuật viên");
+      router.refresh();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa kỹ thuật viên"
+      );
+    },
+  });
+
+  const loadScheduleMutation = useMutation({
+    mutationFn: async (techId: string) => {
+      const [items, overview, exceptions] = await Promise.all([
+        orgOpsHttpApi.listTechnicianSchedules(organizationId, techId),
+        orgOpsHttpApi.getTechnicianWeeklySchedule(organizationId, techId),
+        orgOpsHttpApi.listTechnicianScheduleExceptions(organizationId, techId),
+      ]);
+      return { items, overview, exceptions };
+    },
+    onSuccess: ({ items, overview, exceptions }) => {
+      setSchedules(items);
+      setWeeklyOverview(overview);
+      setScheduleExceptions(exceptions);
+      setScheduleLoadedAt(currentEpochMs());
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể tải lịch làm việc"
+      );
+      setSchedules([]);
+    },
+  });
+
+  const addScheduleMutation = useMutation({
+    mutationFn: (vars: { techId: string; startsAt: string; endsAt: string }) =>
+      orgOpsHttpApi.createTechnicianSchedule(organizationId, vars.techId, {
+        startsAt: vars.startsAt,
+        endsAt: vars.endsAt,
+      }),
+    onSuccess: (created) => {
+      setSchedules((prev) => [...prev, created]);
+      toast.success("Đã thêm khung giờ làm việc");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể thêm lịch làm việc"
+      );
+    },
+  });
+
+  const deleteScheduleMutation = useMutation({
+    mutationFn: async (vars: { techId: string; window: ScheduleWindowItem }) => {
+      await orgOpsHttpApi.deleteTechnicianSchedule(
+        organizationId,
+        vars.techId,
+        vars.window.id,
+        vars.window.version
+      );
+      if (vars.window.source === "RECURRING") {
+        return orgOpsHttpApi
+          .listTechnicianScheduleExceptions(organizationId, vars.techId)
+          .catch(() => null);
+      }
+      return null;
+    },
+    onSuccess: (refreshedExceptions, vars) => {
+      setSchedules((prev) => prev.filter((item) => item.id !== vars.window.id));
+      if (refreshedExceptions !== null) {
+        setScheduleExceptions(refreshedExceptions);
+      }
+      toast.success("Đã xóa khung giờ");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa khung giờ"
+      );
+    },
+  });
+
+  const saving = saveTechMutation.isPending || addScheduleMutation.isPending;
+  const loadingSchedules = loadScheduleMutation.isPending;
 
   function openCreate() {
     setEditTarget(null);
@@ -115,7 +264,7 @@ export function OrgTechniciansPanel({
     setDrawerOpen(true);
   }
 
-  function openEdit(t: OrgTechnicianItem) {
+  const openEdit = React.useCallback((t: OrgTechnicianItem) => {
     const spec = t.specialties.join(", ") || "Điện lạnh";
     const exp = String(t.experienceYears ?? 0);
     const st = t.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -135,118 +284,41 @@ export function OrgTechniciansPanel({
       })
     );
     setDrawerOpen(true);
-  }
+  }, []);
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    try {
-      const specialties = specialtiesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (editTarget) {
-        const updated = await orgOpsHttpApi.updateTechnician(
-          organizationId,
-          editTarget.id,
-          {
-            fullName: fullName.trim(),
-            specialties: specialties.length > 0 ? specialties : ["Đa năng"],
-            experienceYears: Math.max(0, Number(experienceYears) || 0),
-            status,
-          }
-        );
-        setTechs((prev) =>
-          prev.map((t) =>
-            t.id === editTarget.id
-              ? {
-                  ...t,
-                  ...updated,
-                  specialty:
-                    updated.specialties?.join(", ") ||
-                    specialties.join(", ") ||
-                    t.specialty,
-                }
-              : t
-          )
-        );
-        toast.success("Đã cập nhật kỹ thuật viên");
-      } else {
-        if (!provisioned) {
-          toast.error("Vui lòng tạo & xác thực tài khoản ở Bước 1 trước");
-          return;
-        }
-        const created = await orgOpsHttpApi.createTechnician(organizationId, {
-          profileId: provisioned.userId,
-          fullName: fullName.trim(),
-          specialties: specialties.length > 0 ? specialties : ["Đa năng"],
-          experienceYears: Math.max(0, Number(experienceYears) || 0),
-          status,
-        });
-        setTechs((prev) => [
-          {
-            ...created,
-            phone: created.profileId,
-            specialty:
-              created.specialties?.join(", ") || specialties.join(", "),
-            rating: 0,
-          },
-          ...prev,
-        ]);
-        toast.success("Đã thêm kỹ thuật viên");
-      }
-      setDrawerOpen(false);
-      router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể lưu kỹ thuật viên"
-      );
-    } finally {
-      setSaving(false);
+    const specialties = specialtiesText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!editTarget && !provisioned) {
+      toast.error("Vui lòng tạo & xác thực tài khoản ở Bước 1 trước");
+      return;
     }
-  }
-
-  async function handleDelete(t: OrgTechnicianItem) {
-    try {
-      await orgOpsHttpApi.deleteTechnician(organizationId, t.id);
-      setTechs((prev) => prev.filter((item) => item.id !== t.id));
-      toast.success("Đã xóa kỹ thuật viên");
-      router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể xóa kỹ thuật viên"
-      );
-    }
+    saveTechMutation.mutate({
+      editTarget,
+      provisionedUserId: provisioned?.userId,
+      fullName: fullName.trim(),
+      specialties: specialties.length > 0 ? specialties : ["Đa năng"],
+      experienceYears: Math.max(0, Number(experienceYears) || 0),
+      status,
+    });
   }
 
   async function refreshScheduleBundle(techId: string) {
-    setLoadingSchedules(true);
-    try {
-      const [items, overview, exceptions] = await Promise.all([
-        orgOpsHttpApi.listTechnicianSchedules(organizationId, techId),
-        orgOpsHttpApi.getTechnicianWeeklySchedule(organizationId, techId),
-        orgOpsHttpApi.listTechnicianScheduleExceptions(organizationId, techId),
-      ]);
-      setSchedules(items);
-      setWeeklyOverview(overview);
-      setScheduleExceptions(exceptions);
-      setScheduleLoadedAt(currentEpochMs());
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể tải lịch làm việc"
-      );
-      setSchedules([]);
-    } finally {
-      setLoadingSchedules(false);
-    }
+    await loadScheduleMutation.mutateAsync(techId).catch(() => {});
   }
 
-  async function openSchedules(t: OrgTechnicianItem) {
-    setScheduleTech(t);
-    await refreshScheduleBundle(t.id);
-  }
+  const openSchedules = React.useCallback(
+    (t: OrgTechnicianItem) => {
+      setScheduleTech(t);
+      loadScheduleMutation.mutate(t.id);
+    },
+    [loadScheduleMutation]
+  );
 
-  async function handleAddSchedule(e: React.FormEvent) {
+  function handleAddSchedule(e: React.FormEvent) {
     e.preventDefault();
     if (!scheduleTech || !scheduleDate || !startTime || !endTime) return;
     const startsAt = new Date(`${scheduleDate}T${startTime}`);
@@ -259,52 +331,105 @@ export function OrgTechniciansPanel({
       toast.error("Giờ kết thúc phải sau giờ bắt đầu.");
       return;
     }
-    setSaving(true);
-    try {
-      const created = await orgOpsHttpApi.createTechnicianSchedule(
-        organizationId,
-        scheduleTech.id,
-        {
-          startsAt: startsAt.toISOString(),
-          endsAt: endsAt.toISOString(),
-        }
-      );
-      setSchedules((prev) => [...prev, created]);
-      toast.success("Đã thêm khung giờ làm việc");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể thêm lịch làm việc"
-      );
-    } finally {
-      setSaving(false);
-    }
+    addScheduleMutation.mutate({
+      techId: scheduleTech.id,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+    });
   }
 
-  async function handleDeleteSchedule(w: ScheduleWindowItem) {
+  function handleDeleteSchedule(w: ScheduleWindowItem) {
     if (!scheduleTech) return;
-    try {
-      await orgOpsHttpApi.deleteTechnicianSchedule(
-        organizationId,
-        scheduleTech.id,
-        w.id,
-        w.version
-      );
-      setSchedules((prev) => prev.filter((item) => item.id !== w.id));
-      if (w.source === "RECURRING") {
-        const refreshedExceptions = await orgOpsHttpApi
-          .listTechnicianScheduleExceptions(organizationId, scheduleTech.id)
-          .catch(() => null);
-        if (refreshedExceptions !== null) {
-          setScheduleExceptions(refreshedExceptions);
-        }
-      }
-      toast.success("Đã xóa khung giờ");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể xóa khung giờ"
-      );
-    }
+    deleteScheduleMutation.mutate({ techId: scheduleTech.id, window: w });
   }
+
+  const columns = React.useMemo<DataTableColumn<OrgTechnicianItem>[]>(
+    () => [
+      {
+        accessorKey: "fullName",
+        header: "Họ tên",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.fullName}</span>
+        ),
+      },
+      {
+        accessorKey: "specialty",
+        header: "Chuyên môn",
+      },
+      {
+        accessorKey: "experienceYears",
+        header: "Kinh nghiệm",
+        cell: ({ row }) => (
+          <span>
+            {row.original.experienceYears !== undefined
+              ? `${row.original.experienceYears} năm`
+              : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "rating",
+        header: "Đánh giá",
+        cell: ({ row }) => (
+          <span className="inline-flex items-center gap-1 font-medium tabular-nums">
+            {row.original.rating.toFixed(1)}
+            <Star className="h-3.5 w-3.5 fill-warning text-warning" />
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <div className="text-right">
+              <RowActionsMenu
+                ariaLabel={`Thao tác cho kỹ thuật viên ${t.fullName}`}
+                groups={[
+                  {
+                    id: "manage",
+                    items: [
+                      {
+                        id: "schedules",
+                        label: "Lịch làm việc",
+                        icon: Calendar,
+                        onSelect: () => openSchedules(t),
+                      },
+                      {
+                        id: "edit-tech",
+                        label: "Chỉnh sửa thông tin",
+                        icon: Pencil,
+                        onSelect: () => openEdit(t),
+                      },
+                    ],
+                  },
+                  {
+                    id: "danger",
+                    items: [
+                      {
+                        id: "delete-tech",
+                        label: "Xóa kỹ thuật viên",
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => deleteTechMutation.mutate(t),
+                      },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+          );
+        },
+      },
+    ],
+    [deleteTechMutation, openEdit, openSchedules]
+  );
 
   return (
     <div className="space-y-4">
@@ -321,78 +446,13 @@ export function OrgTechniciansPanel({
         </Button>
       </div>
 
-      <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Họ tên</TableHead>
-              <TableHead>Chuyên môn</TableHead>
-              <TableHead>Kinh nghiệm</TableHead>
-              <TableHead>Đánh giá</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {techs.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.fullName}</TableCell>
-                <TableCell>{t.specialty}</TableCell>
-                <TableCell>
-                  {t.experienceYears !== undefined
-                    ? `${t.experienceYears} năm`
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  <span className="inline-flex items-center gap-1 font-medium tabular-nums">
-                    {t.rating.toFixed(1)}
-                    <Star className="h-3.5 w-3.5 fill-warning text-warning" />
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={t.status} />
-                </TableCell>
-                <TableCell className="w-[1%] whitespace-nowrap text-right">
-                  <RowActionsMenu
-                    ariaLabel={`Thao tác cho kỹ thuật viên ${t.fullName}`}
-                    groups={[
-                      {
-                        id: "manage",
-                        items: [
-                          {
-                            id: "schedules",
-                            label: "Lịch làm việc",
-                            icon: Calendar,
-                            onSelect: () => openSchedules(t),
-                          },
-                          {
-                            id: "edit-tech",
-                            label: "Chỉnh sửa thông tin",
-                            icon: Pencil,
-                            onSelect: () => openEdit(t),
-                          },
-                        ],
-                      },
-                      {
-                        id: "danger",
-                        items: [
-                          {
-                            id: "delete-tech",
-                            label: "Xóa kỹ thuật viên",
-                            icon: Trash2,
-                            destructive: true,
-                            onSelect: () => handleDelete(t),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataTable
+        hideSearch
+        serverSide
+        data={techs}
+        columns={columns}
+        emptyMessage="Chưa có kỹ thuật viên nào."
+      />
 
       <FormDrawer
         open={drawerOpen}

@@ -1,26 +1,21 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Check, FileText, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { OrgServiceRequestItem } from "../api/org-ops.adapter";
 import { orgOpsHttpApi } from "../api/org-ops.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate, formatShortId, formatVnd } from "@/shared/lib/utils";
 
 export interface QuoteDraftLine {
@@ -75,10 +70,12 @@ export function OrgRequestsPanel({
   initialRequests: OrgServiceRequestItem[];
   initialError?: string | null;
 }) {
+  const statusFilter = useUiStore((s) => s.orgRequestsStatusFilter);
+  const setStatusFilter = useUiStore((s) => s.setOrgRequestsStatusFilter);
+
   const [requests, setRequests] =
     React.useState<OrgServiceRequestItem[]>(initialRequests);
   const [loadError, setLoadError] = React.useState<string | null>(initialError);
-  const [reloading, setReloading] = React.useState(false);
 
   const [acceptTarget, setAcceptTarget] =
     React.useState<OrgServiceRequestItem | null>(null);
@@ -98,7 +95,6 @@ export function OrgRequestsPanel({
   const [supersedeReason, setSupersedeReason] = React.useState("");
   const [revisionReason, setRevisionReason] = React.useState("");
   const [validHours, setValidHours] = React.useState("48");
-  const [saving, setSaving] = React.useState(false);
 
   const isRequote = quoteTarget?.status === "QUOTATION_SENT";
   const applyCreditByPolicy =
@@ -114,53 +110,151 @@ export function OrgRequestsPanel({
     [lines, quoteTarget, applyCreditByPolicy]
   );
 
-  async function handleReload() {
-    setReloading(true);
-    setLoadError(null);
-    try {
-      const next = await orgOpsHttpApi.listServiceRequests(organizationId);
+  const reloadMutation = useMutation({
+    mutationFn: () => orgOpsHttpApi.listServiceRequests(organizationId),
+    onMutate: () => {
+      setLoadError(null);
+    },
+    onSuccess: (next) => {
       setRequests(next);
-    } catch (err) {
+    },
+    onError: (err) => {
       setLoadError(
         err instanceof Error ? err.message : "Không thể tải lại danh sách yêu cầu."
       );
-    } finally {
-      setReloading(false);
-    }
-  }
+    },
+  });
 
-  async function submitAccept(req: OrgServiceRequestItem, fixedPrice: number) {
-    setSaving(true);
-    try {
-      const updated = await orgOpsHttpApi.acceptServiceRequest(
+  const acceptMutation = useMutation({
+    mutationFn: (vars: { req: OrgServiceRequestItem; fixedPrice: number }) =>
+      orgOpsHttpApi.acceptServiceRequest(
         organizationId,
-        req.id,
-        fixedPrice
-      );
+        vars.req.id,
+        vars.fixedPrice
+      ),
+    onSuccess: (updated, vars) => {
       setRequests((prev) =>
-        prev.map((item) => (item.id === req.id ? updated : item))
+        prev.map((item) => (item.id === vars.req.id ? updated : item))
       );
       toast.success("Đã tiếp nhận yêu cầu dịch vụ");
       setAcceptTarget(null);
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể tiếp nhận yêu cầu"
       );
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+  });
 
-  function onSelectAccept(req: OrgServiceRequestItem) {
-    if (req.priceType === "FIXED" && req.requestType !== "WARRANTY_CLAIM") {
-      setAcceptTarget(req);
-      setFixedPriceInput("300000");
-      return;
-    }
-    void submitAccept(req, 0);
-  }
+  const rejectMutation = useMutation({
+    mutationFn: (vars: { req: OrgServiceRequestItem; reason: string }) =>
+      orgOpsHttpApi.rejectServiceRequest(
+        organizationId,
+        vars.req.id,
+        vars.reason
+      ),
+    onSuccess: (updated, vars) => {
+      setRequests((prev) =>
+        prev.map((item) => (item.id === vars.req.id ? updated : item))
+      );
+      toast.success("Đã từ chối yêu cầu & mở luồng chọn đối tác thay thế");
+      setRejectReason("");
+      setRejectTarget(null);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể từ chối yêu cầu"
+      );
+    },
+  });
 
-  async function handleConfirmFixedAccept(e: React.FormEvent<HTMLFormElement>) {
+  const sendQuotationMutation = useMutation({
+    mutationFn: async (
+      vars:
+        | {
+            mode: "REVISE";
+            repairBookingId: string;
+            items: Omit<QuoteDraftLine, "id">[];
+            revisionReason: string;
+            validUntil: string;
+          }
+        | {
+            mode: "ISSUE";
+            requestId: string;
+            items: Omit<QuoteDraftLine, "id">[];
+            validUntil: string;
+            applyInspectionFeeCredit: boolean;
+            supersedeReason?: string;
+          }
+    ) => {
+      if (vars.mode === "REVISE") {
+        await orgOpsHttpApi.issueRevisedQuotation(
+          organizationId,
+          vars.repairBookingId,
+          {
+            items: vars.items,
+            revisionReason: vars.revisionReason,
+            validUntil: vars.validUntil,
+          }
+        );
+        return vars;
+      }
+      await orgOpsHttpApi.issueQuotation(organizationId, vars.requestId, {
+        items: vars.items,
+        validUntil: vars.validUntil,
+        applyInspectionFeeCredit: vars.applyInspectionFeeCredit,
+        supersedeReason: vars.supersedeReason,
+      });
+      return vars;
+    },
+    onSuccess: (vars) => {
+      if (vars.mode === "REVISE") {
+        toast.success("Đã gửi báo giá phát sinh chờ khách hàng duyệt");
+        setRevisionReason("");
+        setRevisedBookingTarget(null);
+        return;
+      }
+      setRequests((prev) =>
+        prev.map((item) =>
+          item.id === vars.requestId
+            ? { ...item, status: "QUOTATION_SENT" }
+            : item
+        )
+      );
+      toast.success("Đã phát hành báo giá mới");
+      setSupersedeReason("");
+      setQuoteTarget(null);
+    },
+    onError: (err, vars) => {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : vars.mode === "REVISE"
+            ? "Không thể gửi báo giá phát sinh"
+            : "Không thể gửi báo giá"
+      );
+    },
+  });
+
+  const saving =
+    acceptMutation.isPending ||
+    rejectMutation.isPending ||
+    sendQuotationMutation.isPending;
+  const reloading = reloadMutation.isPending;
+
+  const onSelectAccept = React.useCallback(
+    (req: OrgServiceRequestItem) => {
+      if (req.priceType === "FIXED" && req.requestType !== "WARRANTY_CLAIM") {
+        setAcceptTarget(req);
+        setFixedPriceInput("300000");
+        return;
+      }
+      acceptMutation.mutate({ req, fixedPrice: 0 });
+    },
+    [acceptMutation]
+  );
+
+  function handleConfirmFixedAccept(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!acceptTarget) return;
     const price = Number(fixedPriceInput);
@@ -168,39 +262,20 @@ export function OrgRequestsPanel({
       toast.error("Vui lòng nhập đơn giá cố định lớn hơn 0 ₫");
       return;
     }
-    await submitAccept(acceptTarget, Math.round(price));
+    acceptMutation.mutate({ req: acceptTarget, fixedPrice: Math.round(price) });
   }
 
-  async function handleConfirmReject(e: React.FormEvent<HTMLFormElement>) {
+  function handleConfirmReject(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!rejectTarget) return;
     if (!rejectReason.trim()) {
       toast.error("Vui lòng nhập lý do từ chối yêu cầu");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await orgOpsHttpApi.rejectServiceRequest(
-        organizationId,
-        rejectTarget.id,
-        rejectReason.trim()
-      );
-      setRequests((prev) =>
-        prev.map((item) => (item.id === rejectTarget.id ? updated : item))
-      );
-      toast.success("Đã từ chối yêu cầu & mở luồng chọn đối tác thay thế");
-      setRejectReason("");
-      setRejectTarget(null);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể từ chối yêu cầu"
-      );
-    } finally {
-      setSaving(false);
-    }
+    rejectMutation.mutate({ req: rejectTarget, reason: rejectReason.trim() });
   }
 
-  async function handleSendQuotation(e: React.FormEvent<HTMLFormElement>) {
+  function handleSendQuotation(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const validLines = lines
       .filter(
@@ -229,27 +304,13 @@ export function OrgRequestsPanel({
         toast.error("Vui lòng nhập lý do phát sinh báo giá điều chỉnh");
         return;
       }
-      setSaving(true);
-      try {
-        await orgOpsHttpApi.issueRevisedQuotation(
-          organizationId,
-          revisedBookingTarget.repairBookingId,
-          {
-            items: validLines,
-            revisionReason: revisionReason.trim(),
-            validUntil,
-          }
-        );
-        toast.success("Đã gửi báo giá phát sinh chờ khách hàng duyệt");
-        setRevisionReason("");
-        setRevisedBookingTarget(null);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể gửi báo giá phát sinh"
-        );
-      } finally {
-        setSaving(false);
-      }
+      sendQuotationMutation.mutate({
+        mode: "REVISE",
+        repairBookingId: revisedBookingTarget.repairBookingId,
+        items: validLines,
+        revisionReason: revisionReason.trim(),
+        validUntil,
+      });
       return;
     }
 
@@ -258,32 +319,193 @@ export function OrgRequestsPanel({
       toast.error("Vui lòng nhập lý do phát hành lại báo giá");
       return;
     }
-    setSaving(true);
-    try {
-      await orgOpsHttpApi.issueQuotation(organizationId, quoteTarget.id, {
-        items: validLines,
-        validUntil,
-        applyInspectionFeeCredit: applyCreditByPolicy,
-        supersedeReason: isRequote ? supersedeReason.trim() : undefined,
-      });
-      setRequests((prev) =>
-        prev.map((item) =>
-          item.id === quoteTarget.id
-            ? { ...item, status: "QUOTATION_SENT" }
-            : item
-        )
-      );
-      toast.success("Đã phát hành báo giá mới");
-      setSupersedeReason("");
-      setQuoteTarget(null);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể gửi báo giá"
-      );
-    } finally {
-      setSaving(false);
-    }
+    sendQuotationMutation.mutate({
+      mode: "ISSUE",
+      requestId: quoteTarget.id,
+      items: validLines,
+      validUntil,
+      applyInspectionFeeCredit: applyCreditByPolicy,
+      supersedeReason: isRequote ? supersedeReason.trim() : undefined,
+    });
   }
+
+  const visibleRequests = React.useMemo(
+    () =>
+      statusFilter === "ALL"
+        ? requests
+        : requests.filter((r) => r.status === statusFilter),
+    [requests, statusFilter]
+  );
+
+  const columns = React.useMemo<DataTableColumn<OrgServiceRequestItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã YC",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs" title={row.original.id}>
+            #{formatShortId(row.original.id)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "serviceCategory",
+        header: "Loại / Danh mục",
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.serviceCategory}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.original.requestType === "WARRANTY_CLAIM"
+                ? "Bảo hành"
+                : "Sửa chữa / Dịch vụ"}
+            </p>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "requesterName",
+        header: "Khách hàng / Địa chỉ",
+        cell: ({ row }) => (
+          <div className="max-w-xs">
+            <p className="font-medium">
+              {row.original.requesterName || row.original.requesterProfileId}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {row.original.formattedAddress || row.original.address}
+            </p>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "priceType",
+        header: "Định giá / Khảo sát",
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="text-xs">
+              <span className="font-medium">{r.priceType}</span>
+              {r.inspectionFee > 0 ? (
+                <p className="text-muted-foreground">
+                  Khảo sát: {formatVnd(r.inspectionFee)}
+                  {r.inspectionFeePolicy ? ` (${r.inspectionFeePolicy})` : ""}
+                </p>
+              ) : null}
+              {r.inspectionFeeWarningFlag ? (
+                <p className="font-medium text-amber-600">
+                  Cảnh báo phí khảo sát cao
+                </p>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "preferredStart",
+        header: "Thời gian mong muốn",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDate(row.original.preferredStart)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const r = row.original;
+          const isAwaitingProvider = r.status === "AWAITING_PROVIDER";
+          const canQuote =
+            r.priceType === "QUOTE_REQUIRED" &&
+            (r.status === "DIAGNOSTIC_BOOKED" ||
+              r.status === "AWAITING_QUOTATION" ||
+              r.status === "QUOTATION_SENT");
+          const canRevise =
+            r.status === "BOOKED" && Boolean(r.repairBookingId);
+
+          if (!isAwaitingProvider && !canQuote && !canRevise) {
+            return (
+              <div className="text-right">
+                <span className="text-xs text-muted-foreground">—</span>
+              </div>
+            );
+          }
+
+          return (
+            <div className="text-right">
+              <RowActionsMenu
+                ariaLabel={`Thao tác cho yêu cầu #${formatShortId(r.id)}`}
+                groups={[
+                  {
+                    id: "actions",
+                    items: [
+                      {
+                        id: "accept",
+                        label: "Nhận việc",
+                        icon: Check,
+                        hidden: !isAwaitingProvider,
+                        onSelect: () => onSelectAccept(r),
+                      },
+                      {
+                        id: "quote",
+                        label:
+                          r.status === "QUOTATION_SENT"
+                            ? "Phát hành lại báo giá"
+                            : "Gửi báo giá",
+                        icon: FileText,
+                        hidden: !canQuote,
+                        onSelect: () => {
+                          setRevisedBookingTarget(null);
+                          setQuoteTarget(r);
+                          setSupersedeReason("");
+                          setValidHours("48");
+                          setLines([createDraftLine("LABOR", 250000)]);
+                        },
+                      },
+                      {
+                        id: "revise-quote",
+                        label: "Gửi báo giá phát sinh",
+                        icon: FileText,
+                        hidden: !canRevise,
+                        onSelect: () => {
+                          setQuoteTarget(null);
+                          setRevisedBookingTarget(r);
+                          setRevisionReason("");
+                          setValidHours("48");
+                          setLines([createDraftLine("MATERIAL", 150000)]);
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    id: "danger",
+                    items: [
+                      {
+                        id: "reject",
+                        label: "Từ chối yêu cầu",
+                        icon: X,
+                        destructive: true,
+                        hidden: !isAwaitingProvider,
+                        onSelect: () => {
+                          setRejectTarget(r);
+                          setRejectReason("");
+                        },
+                      },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+          );
+        },
+      },
+    ],
+    [onSelectAccept]
+  );
 
   return (
     <div className="space-y-4">
@@ -295,7 +517,7 @@ export function OrgRequestsPanel({
             size="sm"
             variant="outline"
             disabled={reloading}
-            onClick={handleReload}
+            onClick={() => reloadMutation.mutate()}
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {reloading ? "Đang tải..." : "Tải lại"}
@@ -310,156 +532,32 @@ export function OrgRequestsPanel({
           description="Khi khách hàng gửi yêu cầu sửa chữa, bảo hành hoặc khảo sát đến tổ chức, danh sách sẽ hiển thị tại đây."
         />
       ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã YC</TableHead>
-                <TableHead>Loại / Danh mục</TableHead>
-                <TableHead>Khách hàng / Địa chỉ</TableHead>
-                <TableHead>Định giá / Khảo sát</TableHead>
-                <TableHead>Thời gian mong muốn</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {requests.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-mono text-xs" title={r.id}>
-                    #{formatShortId(r.id)}
-                  </TableCell>
-                  <TableCell>
-                    <p className="font-medium">{r.serviceCategory}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {r.requestType === "WARRANTY_CLAIM"
-                        ? "Bảo hành"
-                        : "Sửa chữa / Dịch vụ"}
-                    </p>
-                  </TableCell>
-                  <TableCell className="max-w-xs">
-                    <p className="font-medium">
-                      {r.requesterName || r.requesterProfileId}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {r.formattedAddress || r.address}
-                    </p>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <span className="font-medium">{r.priceType}</span>
-                    {r.inspectionFee > 0 ? (
-                      <p className="text-muted-foreground">
-                        Khảo sát: {formatVnd(r.inspectionFee)}
-                        {r.inspectionFeePolicy
-                          ? ` (${r.inspectionFeePolicy})`
-                          : ""}
-                      </p>
-                    ) : null}
-                    {r.inspectionFeeWarningFlag ? (
-                      <p className="font-medium text-amber-600">
-                        Cảnh báo phí khảo sát cao
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(r.preferredStart)}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={r.status} />
-                  </TableCell>
-                  <TableCell className="w-[1%] whitespace-nowrap text-right">
-                    {(() => {
-                      const isAwaitingProvider =
-                        r.status === "AWAITING_PROVIDER";
-                      const canQuote =
-                        r.priceType === "QUOTE_REQUIRED" &&
-                        (r.status === "DIAGNOSTIC_BOOKED" ||
-                          r.status === "AWAITING_QUOTATION" ||
-                          r.status === "QUOTATION_SENT");
-                      const canRevise =
-                        r.status === "BOOKED" && Boolean(r.repairBookingId);
-
-                      if (!isAwaitingProvider && !canQuote && !canRevise) {
-                        return (
-                          <span className="text-xs text-muted-foreground">
-                            —
-                          </span>
-                        );
-                      }
-
-                      return (
-                        <RowActionsMenu
-                          ariaLabel={`Thao tác cho yêu cầu #${formatShortId(r.id)}`}
-                          groups={[
-                            {
-                              id: "actions",
-                              items: [
-                                {
-                                  id: "accept",
-                                  label: "Nhận việc",
-                                  icon: Check,
-                                  hidden: !isAwaitingProvider,
-                                  onSelect: () => onSelectAccept(r),
-                                },
-                                {
-                                  id: "quote",
-                                  label:
-                                    r.status === "QUOTATION_SENT"
-                                      ? "Phát hành lại báo giá"
-                                      : "Gửi báo giá",
-                                  icon: FileText,
-                                  hidden: !canQuote,
-                                  onSelect: () => {
-                                    setRevisedBookingTarget(null);
-                                    setQuoteTarget(r);
-                                    setSupersedeReason("");
-                                    setValidHours("48");
-                                    setLines([createDraftLine("LABOR", 250000)]);
-                                  },
-                                },
-                                {
-                                  id: "revise-quote",
-                                  label: "Gửi báo giá phát sinh",
-                                  icon: FileText,
-                                  hidden: !canRevise,
-                                  onSelect: () => {
-                                    setQuoteTarget(null);
-                                    setRevisedBookingTarget(r);
-                                    setRevisionReason("");
-                                    setValidHours("48");
-                                    setLines([
-                                      createDraftLine("MATERIAL", 150000),
-                                    ]);
-                                  },
-                                },
-                              ],
-                            },
-                            {
-                              id: "danger",
-                              items: [
-                                {
-                                  id: "reject",
-                                  label: "Từ chối yêu cầu",
-                                  icon: X,
-                                  destructive: true,
-                                  hidden: !isAwaitingProvider,
-                                  onSelect: () => {
-                                    setRejectTarget(r);
-                                    setRejectReason("");
-                                  },
-                                },
-                              ],
-                            },
-                          ]}
-                        />
-                      );
-                    })()}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <DataTable
+          hideSearch
+          serverSide
+          data={visibleRequests}
+          columns={columns}
+          emptyMessage="Không có yêu cầu phù hợp với trạng thái đã chọn."
+          toolbarSlot={
+            <div className="w-52">
+              <NativeSelect
+                aria-label="Lọc trạng thái yêu cầu"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-xs font-medium"
+              >
+                <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
+                <NativeSelectOption value="AWAITING_PROVIDER">Chờ phản hồi</NativeSelectOption>
+                <NativeSelectOption value="DIAGNOSTIC_BOOKED">Đã đặt khảo sát</NativeSelectOption>
+                <NativeSelectOption value="AWAITING_QUOTATION">Chờ báo giá</NativeSelectOption>
+                <NativeSelectOption value="QUOTATION_SENT">Đã gửi báo giá</NativeSelectOption>
+                <NativeSelectOption value="BOOKED">Đã chốt lịch</NativeSelectOption>
+                <NativeSelectOption value="REJECTED">Đã từ chối</NativeSelectOption>
+                <NativeSelectOption value="EXPIRED">Hết hạn</NativeSelectOption>
+              </NativeSelect>
+            </div>
+          }
+        />
       )}
 
       {/* Drawer xác nhận đơn giá cố định */}

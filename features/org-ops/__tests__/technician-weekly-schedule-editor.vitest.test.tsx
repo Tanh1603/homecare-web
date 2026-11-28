@@ -1,4 +1,12 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { TechnicianWeeklyScheduleEditor } from "../components/technician-weekly-schedule-editor";
 import { orgOpsHttpApi, ScheduleConflictError } from "../api/org-ops.http";
@@ -27,7 +35,7 @@ describe("TechnicianWeeklyScheduleEditor", () => {
       });
     const onSaved = vi.fn();
 
-    render(
+    renderWithQuery(
       <TechnicianWeeklyScheduleEditor
         organizationId="org-1"
         technicianId="tech-1"
@@ -94,7 +102,7 @@ describe("TechnicianWeeklyScheduleEditor", () => {
       })
     );
 
-    render(
+    renderWithQuery(
       <TechnicianWeeklyScheduleEditor
         organizationId="org-1"
         technicianId="tech-1"

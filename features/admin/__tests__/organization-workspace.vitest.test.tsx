@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { OrganizationWorkspaceShell } from "@/features/admin/components/organization-workspace-shell";
@@ -45,13 +46,20 @@ const sampleSummary: WorkspaceSummaryData = {
   },
 };
 
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 describe("Organization Workspace & Modern Row Actions", () => {
   afterEach(() => {
     cleanup();
   });
 
   it("renders OrganizationWorkspaceShell with compact header and 6 vertical secondary nav items", () => {
-    render(
+    renderWithQuery(
       <OrganizationWorkspaceShell
         initialOrganization={sampleOrg}
         counts={{ technicians: 5, services: 4, products: 10, coverage: 10 }}
@@ -81,7 +89,7 @@ describe("Organization Workspace & Modern Row Actions", () => {
   });
 
   it("prioritizes operational alerts and direct-link KPIs in OrganizationOverviewPanel", () => {
-    render(
+    renderWithQuery(
       <OrganizationOverviewPanel
         organization={sampleOrg}
         summary={sampleSummary}
@@ -131,19 +139,24 @@ describe("Organization Workspace & Modern Row Actions", () => {
   });
 
   it("omits ADMIN from AdminUsersTable role filter and displays Vietnamese role labels", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     render(
-      <AdminUsersTable
-        initialUsers={[
-          {
-            id: "u-1",
-            fullName: "Nguyễn Văn An",
-            email: "an@example.com",
-            role: "TECHNICIAN",
-            status: "ACTIVE",
-            createdAt: "2026-10-01T08:00:00Z",
-          },
-        ]}
-      />
+      <QueryClientProvider client={client}>
+        <AdminUsersTable
+          initialUsers={[
+            {
+              id: "u-1",
+              fullName: "Nguyễn Văn An",
+              email: "an@example.com",
+              role: "TECHNICIAN",
+              status: "ACTIVE",
+              createdAt: "2026-10-01T08:00:00Z",
+            },
+          ]}
+        />
+      </QueryClientProvider>
     );
 
     const roleSelect = screen.getByLabelText("Lọc theo vai trò");

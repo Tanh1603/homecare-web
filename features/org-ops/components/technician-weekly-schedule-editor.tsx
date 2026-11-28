@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -173,8 +174,64 @@ export function TechnicianWeeklyScheduleEditor({
   const [dayMap, setDayMap] = React.useState<
     Record<WeeklyDayOfWeek, LocalTimeInterval[]>
   >(() => toDayMap(activeRule?.intervals));
-  const [saving, setSaving] = React.useState(false);
   const [conflicts, setConflicts] = React.useState<ScheduleConflictItem[]>([]);
+
+  const saveMutation = useMutation({
+    mutationFn: (intervals: WeeklyDayInterval[]) =>
+      orgOpsHttpApi.upsertTechnicianWeeklySchedule(
+        organizationId,
+        technicianId,
+        {
+          timezone: activeRule?.timezone ?? "Asia/Ho_Chi_Minh",
+          effectiveFrom,
+          effectiveUntil: effectiveUntil || null,
+          intervals,
+        },
+        activeRule?.version
+      ),
+    onSuccess: async (updated) => {
+      toast.success(
+        `Đã lưu lịch tuần và tự động đồng bộ ${updated.horizonDays} ngày tới.`
+      );
+      await onSaved(updated);
+    },
+    onError: (err) => {
+      if (err instanceof ScheduleConflictError) {
+        setConflicts(err.conflicts);
+        toast.error(err.message);
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Không thể lưu lịch làm việc tuần"
+        );
+      }
+    },
+  });
+
+  const endMutation = useMutation({
+    mutationFn: () =>
+      orgOpsHttpApi.endTechnicianWeeklySchedule(
+        organizationId,
+        technicianId,
+        undefined,
+        activeRule?.version
+      ),
+    onSuccess: async () => {
+      toast.success("Đã kết thúc hiệu lực lịch tuần (giữ nguyên các booking đã đặt).");
+      await onSaved(null);
+    },
+    onError: (err) => {
+      if (err instanceof ScheduleConflictError) {
+        setConflicts(err.conflicts);
+        toast.error(err.message);
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Không thể kết thúc lịch tuần"
+        );
+      }
+    },
+  });
+
+  const saving = saveMutation.isPending || endMutation.isPending;
 
   const preview = React.useMemo(
     () => buildEffectivePreview(effectiveFrom, effectiveUntil, dayMap),
@@ -237,7 +294,7 @@ export function TechnicianWeeklyScheduleEditor({
     }));
   }
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setConflicts([]);
     const intervals: WeeklyDayInterval[] = [];
@@ -263,61 +320,12 @@ export function TechnicianWeeklyScheduleEditor({
       }
     }
 
-    setSaving(true);
-    try {
-      const updated = await orgOpsHttpApi.upsertTechnicianWeeklySchedule(
-        organizationId,
-        technicianId,
-        {
-          timezone: activeRule?.timezone ?? "Asia/Ho_Chi_Minh",
-          effectiveFrom,
-          effectiveUntil: effectiveUntil || null,
-          intervals,
-        },
-        activeRule?.version
-      );
-      toast.success(
-        `Đã lưu lịch tuần và tự động đồng bộ ${updated.horizonDays} ngày tới.`
-      );
-      await onSaved(updated);
-    } catch (err) {
-      if (err instanceof ScheduleConflictError) {
-        setConflicts(err.conflicts);
-        toast.error(err.message);
-      } else {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể lưu lịch làm việc tuần"
-        );
-      }
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate(intervals);
   }
 
-  async function handleEndSchedule() {
+  function handleEndSchedule() {
     setConflicts([]);
-    setSaving(true);
-    try {
-      await orgOpsHttpApi.endTechnicianWeeklySchedule(
-        organizationId,
-        technicianId,
-        undefined,
-        activeRule?.version
-      );
-      toast.success("Đã kết thúc hiệu lực lịch tuần (giữ nguyên các booking đã đặt).");
-      await onSaved(null);
-    } catch (err) {
-      if (err instanceof ScheduleConflictError) {
-        setConflicts(err.conflicts);
-        toast.error(err.message);
-      } else {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể kết thúc lịch tuần"
-        );
-      }
-    } finally {
-      setSaving(false);
-    }
+    endMutation.mutate();
   }
 
   return (

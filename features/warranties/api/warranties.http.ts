@@ -1,9 +1,5 @@
-import {
-  extractPageItems,
-  unwrapApiResponse,
-  type ApiResponse,
-  type PageResponse,
-} from "@/shared/api/api-envelope";
+import { extractPageItems, type PageResponse } from "@/shared/api/api-envelope";
+import { gatewayHeaders, requestGateway } from "@/shared/api/http-client";
 
 export interface HouseholdWarrantyItem {
   id: string;
@@ -75,29 +71,18 @@ export interface PartsRequestItem {
   createdAt: string;
 }
 
-function buildHeaders(version?: number, scope: "personal" | "organization" = "personal"): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-homecare-scope": scope,
-  };
-  if (typeof version === "number") {
-    headers["If-Match"] = `"v${version}"`;
-  }
-  return headers;
-}
-
 export const warrantiesHttpApi = {
   async adminListWarranties(verificationStatus = "ALL", page = 1, size = 30): Promise<HouseholdWarrantyItem[]> {
     const query = new URLSearchParams({ page: String(page), size: String(size) });
     if (verificationStatus && verificationStatus !== "ALL") {
       query.set("verificationStatus", verificationStatus);
     }
-    const res = await fetch(`/api/gateway/admin/warranties?${query.toString()}`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "personal" },
+    const data = await requestGateway<PageResponse<HouseholdWarrantyItem> | HouseholdWarrantyItem[]>({
+      url: `/admin/warranties?${query.toString()}`,
+      method: "GET",
+      headers: gatewayHeaders({ scope: "personal" }),
     });
-    const json = (await res.json()) as ApiResponse<PageResponse<HouseholdWarrantyItem> | HouseholdWarrantyItem[]>;
-    return extractPageItems(unwrapApiResponse(json));
+    return extractPageItems(data);
   },
 
   async adminVerifyWarranty(
@@ -105,22 +90,21 @@ export const warrantiesHttpApi = {
     payload: { verificationStatus: "VERIFIED" | "REJECTED"; note?: string },
     version?: number
   ): Promise<HouseholdWarrantyItem> {
-    const res = await fetch(`/api/gateway/admin/warranties/${encodeURIComponent(warrantyId)}/verify`, {
+    return requestGateway<HouseholdWarrantyItem>({
+      url: `/admin/warranties/${encodeURIComponent(warrantyId)}/verify`,
       method: "POST",
-      headers: buildHeaders(version, "personal"),
-      body: JSON.stringify(payload),
+      headers: gatewayHeaders({ version, scope: "personal" }),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<HouseholdWarrantyItem>;
-    return unwrapApiResponse(json);
   },
 
   async adminListClaims(page = 1, size = 30): Promise<WarrantyClaimItem[]> {
-    const res = await fetch(`/api/gateway/admin/warranty-claims?page=${page}&size=${size}`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "personal" },
+    const data = await requestGateway<PageResponse<WarrantyClaimItem> | WarrantyClaimItem[]>({
+      url: `/admin/warranty-claims?page=${page}&size=${size}`,
+      method: "GET",
+      headers: gatewayHeaders({ scope: "personal" }),
     });
-    const json = (await res.json()) as ApiResponse<PageResponse<WarrantyClaimItem> | WarrantyClaimItem[]>;
-    return extractPageItems(unwrapApiResponse(json));
+    return extractPageItems(data);
   },
 
   async adminVerifyClaim(
@@ -128,22 +112,21 @@ export const warrantiesHttpApi = {
     payload: { warrantyVerificationStatus?: "VERIFIED" | "REJECTED"; authorizationVerificationStatus?: "VERIFIED" | "REJECTED"; note?: string },
     version?: number
   ): Promise<WarrantyClaimItem> {
-    const res = await fetch(`/api/gateway/admin/warranty-claims/${encodeURIComponent(claimId)}/verify`, {
+    return requestGateway<WarrantyClaimItem>({
+      url: `/admin/warranty-claims/${encodeURIComponent(claimId)}/verify`,
       method: "POST",
-      headers: buildHeaders(version, "personal"),
-      body: JSON.stringify(payload),
+      headers: gatewayHeaders({ version, scope: "personal" }),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<WarrantyClaimItem>;
-    return unwrapApiResponse(json);
   },
 
   async orgListClaims(page = 1, size = 30): Promise<WarrantyClaimItem[]> {
-    const res = await fetch(`/api/gateway/warranty-claims?page=${page}&size=${size}`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "organization" },
+    const data = await requestGateway<PageResponse<WarrantyClaimItem> | WarrantyClaimItem[]>({
+      url: `/warranty-claims?page=${page}&size=${size}`,
+      method: "GET",
+      headers: gatewayHeaders({ scope: "organization" }),
     });
-    const json = (await res.json()) as ApiResponse<PageResponse<WarrantyClaimItem> | WarrantyClaimItem[]>;
-    return extractPageItems(unwrapApiResponse(json));
+    return extractPageItems(data);
   },
 
   async orgRespondClaim(
@@ -151,35 +134,32 @@ export const warrantiesHttpApi = {
     payload: { accepted: boolean; rejectionReason?: string },
     version?: number
   ): Promise<WarrantyClaimItem> {
-    const res = await fetch(`/api/gateway/warranty-claims/${encodeURIComponent(claimId)}/respond`, {
+    return requestGateway<WarrantyClaimItem>({
+      url: `/warranty-claims/${encodeURIComponent(claimId)}/respond`,
       method: "POST",
-      headers: buildHeaders(version, "organization"),
-      body: JSON.stringify(payload),
+      headers: gatewayHeaders({ version, scope: "organization" }),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<WarrantyClaimItem>;
-    return unwrapApiResponse(json);
   },
 
   async orgAppendClaimEvidence(
     claimId: string,
     payload: { evidenceKind: "WARRANTY" | "AUTHORIZATION"; evidenceRef: string }
   ): Promise<WarrantyClaimItem> {
-    const res = await fetch(`/api/gateway/warranty-claims/${encodeURIComponent(claimId)}/evidence`, {
+    return requestGateway<WarrantyClaimItem>({
+      url: `/warranty-claims/${encodeURIComponent(claimId)}/evidence`,
       method: "POST",
-      headers: buildHeaders(undefined, "organization"),
-      body: JSON.stringify(payload),
+      headers: gatewayHeaders({ scope: "organization" }),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<WarrantyClaimItem>;
-    return unwrapApiResponse(json);
   },
 
   async orgListPartsRequests(bookingId: string): Promise<PartsRequestItem[]> {
-    const res = await fetch(`/api/gateway/bookings/${encodeURIComponent(bookingId)}/parts-requests`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "organization" },
+    return requestGateway<PartsRequestItem[]>({
+      url: `/bookings/${encodeURIComponent(bookingId)}/parts-requests`,
+      method: "GET",
+      headers: gatewayHeaders({ scope: "organization" }),
     });
-    const json = (await res.json()) as ApiResponse<PartsRequestItem[]>;
-    return unwrapApiResponse(json);
   },
 
   async orgReviewPartsRequest(
@@ -188,15 +168,11 @@ export const warrantiesHttpApi = {
     payload: { approved: boolean; costPrice?: number; unitPrice?: number; reason?: string },
     version?: number
   ): Promise<PartsRequestItem> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/parts-requests/${encodeURIComponent(requestId)}/review`,
-      {
-        method: "POST",
-        headers: buildHeaders(version, "organization"),
-        body: JSON.stringify(payload),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<PartsRequestItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<PartsRequestItem>({
+      url: `/bookings/${encodeURIComponent(bookingId)}/parts-requests/${encodeURIComponent(requestId)}/review`,
+      method: "POST",
+      headers: gatewayHeaders({ version, scope: "organization" }),
+      data: payload,
+    });
   },
 };

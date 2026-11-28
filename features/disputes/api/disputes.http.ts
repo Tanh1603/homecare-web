@@ -1,9 +1,5 @@
-import {
-  extractPageItems,
-  unwrapApiResponse,
-  type ApiResponse,
-  type PageResponse,
-} from "@/shared/api/api-envelope";
+import { extractPageItems, type PageResponse } from "@/shared/api/api-envelope";
+import { gatewayHeaders, requestGateway } from "@/shared/api/http-client";
 
 export interface DisputeEvidenceItem {
   id: string;
@@ -62,27 +58,17 @@ export interface AdminNotificationFailedBookingDetail extends AdminNotificationF
   workEvidenceCount: number;
 }
 
-function etagHeader(version?: number, personal = false): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (personal) {
-    headers["x-homecare-scope"] = "personal";
-  }
-  if (typeof version === "number") {
-    headers["If-Match"] = `"v${version}"`;
-  }
-  return headers;
-}
-
 export const disputesHttpApi = {
   async adminListDisputes(status?: string, page = 1, size = 30): Promise<DisputeItem[]> {
-    const query = new URLSearchParams({ page: String(page), size: String(size) });
-    if (status && status !== "ALL") query.set("status", status);
-    const res = await fetch(`/api/gateway/admin/disputes?${query.toString()}`, {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "personal" },
+    const params: Record<string, string> = { page: String(page), size: String(size) };
+    if (status && status !== "ALL") params.status = status;
+    const data = await requestGateway<PageResponse<DisputeItem> | DisputeItem[]>({
+      method: "GET",
+      url: "/admin/disputes",
+      params,
+      headers: gatewayHeaders({ personal: true }),
     });
-    const json = (await res.json()) as ApiResponse<PageResponse<DisputeItem> | DisputeItem[]>;
-    return extractPageItems(unwrapApiResponse(json));
+    return extractPageItems(data);
   },
 
   async adminRequestProviderResponse(
@@ -90,16 +76,12 @@ export const disputesHttpApi = {
     version?: number,
     note?: string
   ): Promise<DisputeItem> {
-    const res = await fetch(
-      `/api/gateway/admin/disputes/${encodeURIComponent(disputeId)}/request-provider-response`,
-      {
-        method: "POST",
-        headers: etagHeader(version, true),
-        body: JSON.stringify({ note: note?.trim() || undefined }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem>({
+      method: "POST",
+      url: `/admin/disputes/${encodeURIComponent(disputeId)}/request-provider-response`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: { note: note?.trim() || undefined },
+    });
   },
 
   async adminRequestCustomerEvidence(
@@ -107,16 +89,12 @@ export const disputesHttpApi = {
     version?: number,
     note?: string
   ): Promise<DisputeItem> {
-    const res = await fetch(
-      `/api/gateway/admin/disputes/${encodeURIComponent(disputeId)}/request-customer-evidence`,
-      {
-        method: "POST",
-        headers: etagHeader(version, true),
-        body: JSON.stringify({ note: note?.trim() || undefined }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem>({
+      method: "POST",
+      url: `/admin/disputes/${encodeURIComponent(disputeId)}/request-customer-evidence`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: { note: note?.trim() || undefined },
+    });
   },
 
   async adminProposeResolution(
@@ -124,19 +102,15 @@ export const disputesHttpApi = {
     input: { proposal: string; outcome: string },
     version?: number
   ): Promise<DisputeItem> {
-    const res = await fetch(
-      `/api/gateway/admin/disputes/${encodeURIComponent(disputeId)}/propose-resolution`,
-      {
-        method: "POST",
-        headers: etagHeader(version, true),
-        body: JSON.stringify({
-          proposal: input.proposal.trim(),
-          outcome: input.outcome,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem>({
+      method: "POST",
+      url: `/admin/disputes/${encodeURIComponent(disputeId)}/propose-resolution`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: {
+        proposal: input.proposal.trim(),
+        outcome: input.outcome,
+      },
+    });
   },
 
   async adminResolveDispute(
@@ -148,31 +122,23 @@ export const disputesHttpApi = {
     },
     version?: number
   ): Promise<DisputeItem> {
-    const res = await fetch(
-      `/api/gateway/admin/disputes/${encodeURIComponent(disputeId)}/resolve`,
-      {
-        method: "POST",
-        headers: etagHeader(version, true),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem>({
+      method: "POST",
+      url: `/admin/disputes/${encodeURIComponent(disputeId)}/resolve`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: input,
+    });
   },
 
   async orgListBookingDisputes(
     organizationId: string,
     bookingId: string
   ): Promise<DisputeItem[]> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/disputes`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem[]>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem[]>({
+      method: "GET",
+      url: `/bookings/${encodeURIComponent(bookingId)}/disputes`,
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async orgSubmitProviderResponse(
@@ -181,20 +147,12 @@ export const disputesHttpApi = {
     response: string,
     version?: number
   ): Promise<DisputeItem> {
-    const headers: Record<string, string> = {
-      ...etagHeader(version),
-      "X-Organization-Id": organizationId,
-    };
-    const res = await fetch(
-      `/api/gateway/disputes/${encodeURIComponent(disputeId)}/provider-response`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ response: response.trim() }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<DisputeItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<DisputeItem>({
+      method: "POST",
+      url: `/disputes/${encodeURIComponent(disputeId)}/provider-response`,
+      headers: gatewayHeaders({ organizationId, version }),
+      data: { response: response.trim() },
+    });
   },
 
   async orgReassignSameOrgTechnician(
@@ -203,58 +161,37 @@ export const disputesHttpApi = {
     input: { technicianId: string; note?: string },
     version?: number
   ): Promise<{ id: string; status: string; assignedTechnicianId?: string | null; assignedTechnicianName?: string | null; version?: number }> {
-    const headers: Record<string, string> = {
-      ...etagHeader(version),
-      "X-Organization-Id": organizationId,
-    };
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/reassign-technician`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      id: string;
-      status: string;
-      assignedTechnicianId?: string | null;
-      assignedTechnicianName?: string | null;
-      version?: number;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway({
+      method: "POST",
+      url: `/bookings/${encodeURIComponent(bookingId)}/reassign-technician`,
+      headers: gatewayHeaders({ organizationId, version }),
+      data: input,
+    });
   },
 
   async adminListNotificationFailedBookings(
     page = 1,
     size = 30
   ): Promise<AdminNotificationFailedBooking[]> {
-    const query = new URLSearchParams({ page: String(page), size: String(size) });
-    const res = await fetch(
-      `/api/gateway/admin/bookings/notification-failed?${query.toString()}`,
-      {
-        cache: "no-store",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
+    const data = await requestGateway<
       PageResponse<AdminNotificationFailedBooking> | AdminNotificationFailedBooking[]
-    >;
-    return extractPageItems(unwrapApiResponse(json));
+    >({
+      method: "GET",
+      url: "/admin/bookings/notification-failed",
+      params: { page: String(page), size: String(size) },
+      headers: gatewayHeaders({ personal: true }),
+    });
+    return extractPageItems(data);
   },
 
   async adminGetNotificationFailedBooking(
     bookingId: string
   ): Promise<AdminNotificationFailedBookingDetail> {
-    const res = await fetch(
-      `/api/gateway/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}`,
-      {
-        cache: "no-store",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<AdminNotificationFailedBookingDetail>;
-    return unwrapApiResponse(json);
+    return requestGateway<AdminNotificationFailedBookingDetail>({
+      method: "GET",
+      url: `/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}`,
+      headers: gatewayHeaders({ personal: true }),
+    });
   },
 
   async adminRetryCompletionNotification(
@@ -262,15 +199,11 @@ export const disputesHttpApi = {
     version?: number,
     note?: string
   ): Promise<AdminNotificationFailedBookingDetail> {
-    const res = await fetch(
-      `/api/gateway/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}/retry`,
-      {
-        method: "POST",
-        headers: etagHeader(version, true),
-        body: JSON.stringify({ note: note?.trim() || undefined }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<AdminNotificationFailedBookingDetail>;
-    return unwrapApiResponse(json);
+    return requestGateway<AdminNotificationFailedBookingDetail>({
+      method: "POST",
+      url: `/admin/bookings/notification-failed/${encodeURIComponent(bookingId)}/retry`,
+      headers: gatewayHeaders({ personal: true, version }),
+      data: { note: note?.trim() || undefined },
+    });
   },
 };

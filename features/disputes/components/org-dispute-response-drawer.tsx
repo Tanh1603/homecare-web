@@ -1,11 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  disputesHttpApi,
-  type DisputeItem,
-} from "@/features/disputes/api/disputes.http";
+import { disputesHttpApi } from "@/features/disputes/api/disputes.http";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Textarea } from "@/shared/ui/textarea";
@@ -24,45 +22,21 @@ export function OrgDisputeResponseDrawer({
   onClose: () => void;
   onSubmitted?: () => void;
 }) {
-  const [disputes, setDisputes] = React.useState<DisputeItem[]>([]);
-  const [loadedKey, setLoadedKey] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [responseText, setResponseText] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-
-  const requestKey = open && bookingId ? `${organizationId}:${bookingId}` : null;
-  const loading = Boolean(requestKey) && loadedKey !== requestKey;
-
-  React.useEffect(() => {
-    if (!requestKey || !bookingId) return;
-    let active = true;
-    disputesHttpApi
-      .orgListBookingDisputes(organizationId, bookingId)
-      .then((list) => {
-        if (!active) return;
-        setDisputes(list);
-        setResponseText("");
-      })
-      .catch((err) => {
-        if (!active) return;
-        toast.error(
-          err instanceof Error ? err.message : "Không thể tải hồ sơ tranh chấp"
-        );
-        setDisputes([]);
-      })
-      .finally(() => {
-        if (active) setLoadedKey(requestKey);
-      });
-    return () => {
-      active = false;
-    };
-  }, [requestKey, bookingId, organizationId]);
 
   const handleClose = React.useCallback(() => {
-    setLoadedKey(null);
     setResponseText("");
     onClose();
   }, [onClose]);
 
+  const disputesQuery = useQuery({
+    queryKey: ["org-booking-disputes", organizationId, bookingId],
+    queryFn: () => disputesHttpApi.orgListBookingDisputes(organizationId, bookingId!),
+    enabled: open && Boolean(bookingId),
+  });
+
+  const disputes = disputesQuery.data ?? [];
   const activeDispute =
     disputes.find(
       (d) =>
@@ -74,31 +48,41 @@ export function OrgDisputeResponseDrawer({
     (activeDispute.status === "AWAITING_PROVIDER_RESPONSE" ||
       activeDispute.status === "SUBMITTED");
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const submitMutation = useMutation({
+    mutationFn: (payload: { disputeId: string; response: string; version?: number }) =>
+      disputesHttpApi.orgSubmitProviderResponse(
+        organizationId,
+        payload.disputeId,
+        payload.response,
+        payload.version
+      ),
+    onSuccess: () => {
+      toast.success("Đã gửi phản hồi tranh chấp tới quản trị viên.");
+      void queryClient.invalidateQueries({
+        queryKey: ["org-booking-disputes", organizationId, bookingId],
+      });
+      onSubmitted?.();
+      handleClose();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể gửi phản hồi tranh chấp"
+      );
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!activeDispute || !canRespond) return;
     if (!responseText.trim()) {
       toast.error("Vui lòng nhập nội dung phản hồi cho tranh chấp.");
       return;
     }
-    setSaving(true);
-    try {
-      await disputesHttpApi.orgSubmitProviderResponse(
-        organizationId,
-        activeDispute.id,
-        responseText.trim(),
-        activeDispute.version
-      );
-      toast.success("Đã gửi phản hồi tranh chấp tới quản trị viên.");
-      onSubmitted?.();
-      handleClose();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể gửi phản hồi tranh chấp"
-      );
-    } finally {
-      setSaving(false);
-    }
+    submitMutation.mutate({
+      disputeId: activeDispute.id,
+      response: responseText.trim(),
+      version: activeDispute.version,
+    });
   }
 
   return (
@@ -108,7 +92,7 @@ export function OrgDisputeResponseDrawer({
       title={`Tranh chấp lịch hẹn #${formatShortId(bookingId ?? "")}`}
       description="Xem chi tiết khiếu nại và gửi phản hồi giải trình trong thời hạn SLA 48 giờ."
       isDirty={Boolean(responseText.trim())}
-      saving={saving}
+      saving={submitMutation.isPending}
       submitLabel={canRespond ? "Gửi phản hồi" : "Đóng"}
       onSubmit={
         canRespond
@@ -119,8 +103,14 @@ export function OrgDisputeResponseDrawer({
             }
       }
     >
-      {loading ? (
+      {disputesQuery.isPending ? (
         <p className="text-sm text-muted-foreground">Đang tải tranh chấp...</p>
+      ) : disputesQuery.isError ? (
+        <p className="text-sm text-destructive">
+          {disputesQuery.error instanceof Error
+            ? disputesQuery.error.message
+            : "Không thể tải hồ sơ tranh chấp"}
+        </p>
       ) : !activeDispute ? (
         <p className="text-sm text-muted-foreground">
           Không tìm thấy hồ sơ tranh chấp nào cho lịch hẹn này.
@@ -154,7 +144,7 @@ export function OrgDisputeResponseDrawer({
                 id="org-dispute-response"
                 rows={4}
                 value={responseText}
-                disabled={saving}
+                disabled={submitMutation.isPending}
                 onChange={(e) => setResponseText(e.target.value)}
                 placeholder="Trình bày kết quả kiểm tra hiện trường, nguyên nhân và phương án khắc phục..."
               />

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -17,20 +18,13 @@ import {
 } from "./account-provisioning-step";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate } from "@/shared/lib/utils";
 
 export function OrgMembersPanel({
@@ -50,8 +44,6 @@ export function OrgMembersPanel({
   const [provisioned, setProvisioned] =
     React.useState<ProvisionedAccountInfo | null>(null);
   const [role, setRole] = React.useState<(typeof ORG_ROLES)[number]>("ORG_STAFF");
-  const [submitting, setSubmitting] = React.useState(false);
-  const [busyUserId, setBusyUserId] = React.useState<string | null>(null);
 
   const canManage =
     currentUserRole === "ORG_OWNER" ||
@@ -59,13 +51,84 @@ export function OrgMembersPanel({
     currentUserRole === "OWNER" ||
     currentUserRole === "MANAGER";
 
+  const addMemberMutation = useMutation({
+    mutationFn: (vars: {
+      userId: string;
+      role: (typeof ORG_ROLES)[number];
+      provisionedInfo: ProvisionedAccountInfo;
+    }) => organizationsApi.addMember(organizationId, { userId: vars.userId, role: vars.role }),
+    onSuccess: (created, vars) => {
+      setMembers((prev) => [
+        ...prev,
+        {
+          ...created,
+          fullName: created.fullName || vars.provisionedInfo.fullName,
+          email: created.email || vars.provisionedInfo.email,
+        },
+      ]);
+      setProvisioned(null);
+      setRole("ORG_STAFF");
+      setDrawerOpen(false);
+      toast.success("Đã thêm thành viên vào tổ chức");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể thêm thành viên"
+      );
+    },
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: (vars: {
+      member: OrganizationMember;
+      nextRole: (typeof ORG_ROLES)[number];
+    }) =>
+      organizationsApi.updateMemberRole(
+        organizationId,
+        vars.member.userId,
+        vars.nextRole
+      ),
+    onSuccess: (updated, vars) => {
+      setMembers((prev) =>
+        prev.map((m) => (m.userId === vars.member.userId ? updated : m))
+      );
+      toast.success("Đã cập nhật vai trò thành viên");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể đổi vai trò"
+      );
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (member: OrganizationMember) =>
+      organizationsApi.removeMember(organizationId, member.userId),
+    onSuccess: (_res, member) => {
+      setMembers((prev) => prev.filter((m) => m.userId !== member.userId));
+      toast.success("Đã xóa thành viên khỏi tổ chức");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa thành viên"
+      );
+    },
+  });
+
+  const submitting = addMemberMutation.isPending;
+  const busyUserId = roleMutation.isPending
+    ? roleMutation.variables?.member.userId ?? null
+    : removeMutation.isPending
+      ? removeMutation.variables?.userId ?? null
+      : null;
+
   function openAddDrawer() {
     setProvisioned(null);
     setRole("ORG_STAFF");
     setDrawerOpen(true);
   }
 
-  async function handleAddMember(e: React.FormEvent) {
+  function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
     if (!provisioned) {
       toast.error("Vui lòng tạo & xác thực tài khoản ở Bước 1 trước");
@@ -79,73 +142,134 @@ export function OrgMembersPanel({
       toast.error(parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ");
       return;
     }
+    addMemberMutation.mutate({
+      ...parsed.data,
+      provisionedInfo: provisioned,
+    });
+  }
 
-    setSubmitting(true);
-    try {
-      const created = await organizationsApi.addMember(
-        organizationId,
-        parsed.data
-      );
-      setMembers((prev) => [
-        ...prev,
-        {
-          ...created,
-          fullName: created.fullName || provisioned.fullName,
-          email: created.email || provisioned.email,
+  const columns = React.useMemo<DataTableColumn<OrganizationMember>[]>(() => {
+    const base: DataTableColumn<OrganizationMember>[] = [
+      {
+        accessorKey: "fullName",
+        header: "Thành viên",
+        cell: ({ row }) => {
+          const m = row.original;
+          const isSelf = m.userId === currentUserId;
+          const displayName =
+            m.fullName?.trim() || m.email?.trim() || "Thành viên";
+          return (
+            <div className="text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium text-foreground">
+                  {displayName}
+                </span>
+                {isSelf ? <Badge variant="secondary">Bạn</Badge> : null}
+              </div>
+              {m.email && m.fullName ? (
+                <p className="text-[11px] text-muted-foreground">{m.email}</p>
+              ) : null}
+            </div>
+          );
         },
-      ]);
-      setProvisioned(null);
-      setRole("ORG_STAFF");
-      setDrawerOpen(false);
-      toast.success("Đã thêm thành viên vào tổ chức");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể thêm thành viên"
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
+      },
+      {
+        accessorKey: "role",
+        header: "Vai trò",
+        cell: ({ row }) => {
+          const m = row.original;
+          const isSelf = m.userId === currentUserId;
+          const busy = busyUserId === m.userId;
+          const displayName =
+            m.fullName?.trim() || m.email?.trim() || "Thành viên";
+          if (!canManage || isSelf) {
+            return (
+              <Badge variant="outline">{formatOrgRoleLabel(m.role)}</Badge>
+            );
+          }
+          return (
+            <div className="w-44">
+              <NativeSelect
+                size="sm"
+                aria-label={`Vai trò của ${displayName}`}
+                value={m.role}
+                disabled={busy}
+                onChange={(e) => {
+                  const nextRole = e.target.value as (typeof ORG_ROLES)[number];
+                  if (m.role !== nextRole) {
+                    roleMutation.mutate({ member: m, nextRole });
+                  }
+                }}
+                className="text-xs font-medium"
+              >
+                {ORG_ROLES.map((r) => (
+                  <NativeSelectOption key={r} value={r}>
+                    {formatOrgRoleLabel(r)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "joinedAt",
+        header: "Ngày tham gia",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDate(row.original.joinedAt)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+    ];
 
-  async function handleRoleChange(
-    member: OrganizationMember,
-    nextRole: (typeof ORG_ROLES)[number]
-  ) {
-    if (member.role === nextRole) return;
-    setBusyUserId(member.userId);
-    try {
-      const updated = await organizationsApi.updateMemberRole(
-        organizationId,
-        member.userId,
-        nextRole
-      );
-      setMembers((prev) =>
-        prev.map((m) => (m.userId === member.userId ? updated : m))
-      );
-      toast.success("Đã cập nhật vai trò thành viên");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể đổi vai trò"
-      );
-    } finally {
-      setBusyUserId(null);
+    if (canManage) {
+      base.push({
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const m = row.original;
+          const isSelf = m.userId === currentUserId;
+          const busy = busyUserId === m.userId;
+          const displayName =
+            m.fullName?.trim() || m.email?.trim() || "Thành viên";
+          return (
+            <div className="text-right">
+              {!isSelf ? (
+                <RowActionsMenu
+                  ariaLabel={`Thao tác cho thành viên ${displayName}`}
+                  disabled={busy}
+                  groups={[
+                    {
+                      id: "danger",
+                      items: [
+                        {
+                          id: "remove",
+                          label: "Xóa khỏi tổ chức",
+                          icon: Trash2,
+                          destructive: true,
+                          onSelect: () => removeMutation.mutate(m),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </div>
+          );
+        },
+      });
     }
-  }
 
-  async function handleRemove(member: OrganizationMember) {
-    setBusyUserId(member.userId);
-    try {
-      await organizationsApi.removeMember(organizationId, member.userId);
-      setMembers((prev) => prev.filter((m) => m.userId !== member.userId));
-      toast.success("Đã xóa thành viên khỏi tổ chức");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể xóa thành viên"
-      );
-    } finally {
-      setBusyUserId(null);
-    }
-  }
+    return base;
+  }, [busyUserId, canManage, currentUserId, removeMutation, roleMutation]);
 
   return (
     <Card>
@@ -173,109 +297,12 @@ export function OrgMembersPanel({
             description="Kiểm tra kết nối API Gateway hoặc thêm thành viên mới vào tổ chức."
           />
         ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Thành viên</TableHead>
-                  <TableHead>Vai trò</TableHead>
-                  <TableHead>Ngày tham gia</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  {canManage ? <TableHead className="text-right">Thao tác</TableHead> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.map((m) => {
-                  const isSelf = m.userId === currentUserId;
-                  const busy = busyUserId === m.userId;
-                  const displayName =
-                    m.fullName?.trim() || m.email?.trim() || "Thành viên";
-                  return (
-                    <TableRow key={m.id || m.userId}>
-                      <TableCell className="text-xs">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-medium text-foreground">
-                            {displayName}
-                          </span>
-                          {isSelf ? (
-                            <Badge variant="secondary">Bạn</Badge>
-                          ) : null}
-                        </div>
-                        {m.email && m.fullName ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            {m.email}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        {canManage && !isSelf ? (
-                          <div className="w-44">
-                            <NativeSelect
-                              size="sm"
-                              aria-label={`Vai trò của ${displayName}`}
-                              value={m.role}
-                              disabled={busy}
-                              onChange={(e) =>
-                                handleRoleChange(
-                                  m,
-                                  e.target.value as (typeof ORG_ROLES)[number]
-                                )
-                              }
-                              className="text-xs font-medium"
-                            >
-                              {ORG_ROLES.map((r) => (
-                                <NativeSelectOption key={r} value={r}>
-                                  {formatOrgRoleLabel(r)}
-                                </NativeSelectOption>
-                              ))}
-                            </NativeSelect>
-                          </div>
-                        ) : (
-                          <Badge variant="outline">
-                            {formatOrgRoleLabel(m.role)}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(m.joinedAt)}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={m.status} />
-                      </TableCell>
-                      {canManage ? (
-                        <TableCell className="w-[1%] whitespace-nowrap text-right">
-                          {!isSelf ? (
-                            <RowActionsMenu
-                              ariaLabel={`Thao tác cho thành viên ${displayName}`}
-                              disabled={busy}
-                              groups={[
-                                {
-                                  id: "danger",
-                                  items: [
-                                    {
-                                      id: "remove",
-                                      label: "Xóa khỏi tổ chức",
-                                      icon: Trash2,
-                                      destructive: true,
-                                      onSelect: () => handleRemove(m),
-                                    },
-                                  ],
-                                },
-                              ]}
-                            />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable
+            hideSearch
+            serverSide
+            data={members}
+            columns={columns}
+          />
         )}
       </CardContent>
 

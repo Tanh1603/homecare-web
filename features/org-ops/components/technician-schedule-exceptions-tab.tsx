@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -54,13 +55,63 @@ export function TechnicianScheduleExceptionsTab({
   const [intervals, setIntervals] = React.useState<LocalTimeInterval[]>([
     { startTime: "08:00:00", endTime: "12:00:00" },
   ]);
-  const [saving, setSaving] = React.useState(false);
   const [conflicts, setConflicts] = React.useState<ScheduleConflictItem[]>([]);
 
   const needsIntervals =
     exceptionType !== "UNAVAILABLE" || !fullDayLeave;
 
-  async function handleSubmit(e: React.FormEvent) {
+  const saveMutation = useMutation({
+    mutationFn: (payload: {
+      fromDate: string;
+      toDate: string;
+      exceptionType: ScheduleExceptionType;
+      reason: string;
+      intervals: LocalTimeInterval[];
+    }) =>
+      orgOpsHttpApi.upsertTechnicianScheduleExceptions(
+        organizationId,
+        technicianId,
+        payload
+      ),
+    onSuccess: async () => {
+      toast.success("Đã lưu ngoại lệ lịch làm việc.");
+      setReason("");
+      await onChanged();
+    },
+    onError: (err) => {
+      if (err instanceof ScheduleConflictError) {
+        setConflicts(err.conflicts);
+        toast.error(err.message);
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Không thể lưu ngày ngoại lệ"
+        );
+      }
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (ex: ScheduleExceptionItem) =>
+      orgOpsHttpApi.deleteTechnicianScheduleException(
+        organizationId,
+        technicianId,
+        ex.id,
+        ex.version
+      ),
+    onSuccess: async () => {
+      toast.success("Đã xóa ngoại lệ và khôi phục lịch theo lịch tuần.");
+      await onChanged();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa ngoại lệ"
+      );
+    },
+  });
+
+  const saving = saveMutation.isPending || deleteMutation.isPending;
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setConflicts([]);
     const effectiveTo =
@@ -77,51 +128,17 @@ export function TechnicianScheduleExceptionsTab({
       }
     }
 
-    setSaving(true);
-    try {
-      await orgOpsHttpApi.upsertTechnicianScheduleExceptions(
-        organizationId,
-        technicianId,
-        {
-          fromDate,
-          toDate: effectiveTo,
-          exceptionType,
-          reason,
-          intervals: payloadIntervals,
-        }
-      );
-      toast.success("Đã lưu ngoại lệ lịch làm việc.");
-      setReason("");
-      await onChanged();
-    } catch (err) {
-      if (err instanceof ScheduleConflictError) {
-        setConflicts(err.conflicts);
-        toast.error(err.message);
-      } else {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể lưu ngày ngoại lệ"
-        );
-      }
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate({
+      fromDate,
+      toDate: effectiveTo,
+      exceptionType,
+      reason,
+      intervals: payloadIntervals,
+    });
   }
 
-  async function handleDelete(ex: ScheduleExceptionItem) {
-    try {
-      await orgOpsHttpApi.deleteTechnicianScheduleException(
-        organizationId,
-        technicianId,
-        ex.id,
-        ex.version
-      );
-      toast.success("Đã xóa ngoại lệ và khôi phục lịch theo lịch tuần.");
-      await onChanged();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể xóa ngoại lệ"
-      );
-    }
+  function handleDelete(ex: ScheduleExceptionItem) {
+    deleteMutation.mutate(ex);
   }
 
   return (

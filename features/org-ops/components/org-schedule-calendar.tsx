@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
   ChevronLeft,
@@ -17,12 +18,12 @@ import type { OrgTechnicianItem } from "../api/org-ops.adapter";
 import {
   orgOpsHttpApi,
   type CalendarDayItem,
-  type OrganizationCalendarResponse,
   type ScheduleAuditItem,
   type ScheduleExceptionItem,
   type TechnicianCalendarRow,
   type WeeklyScheduleOverview,
 } from "../api/org-ops.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { TechnicianWeeklyScheduleEditor } from "./technician-weekly-schedule-editor";
 import { TechnicianScheduleExceptionsTab } from "./technician-schedule-exceptions-tab";
 import { OrgScheduleRequestsPanel } from "./org-schedule-requests-panel";
@@ -138,8 +139,9 @@ export function OrgScheduleCalendar({
   canManage: boolean;
   initialTechnicians: OrgTechnicianItem[];
 }) {
-  const [workspaceTab, setWorkspaceTab] = React.useState<"calendar" | "requests">("calendar");
-  const [pendingRequestCount, setPendingRequestCount] = React.useState<number>(0);
+  const queryClient = useQueryClient();
+  const workspaceTab = useUiStore((s) => s.orgScheduleWorkspaceTab);
+  const setWorkspaceTab = useUiStore((s) => s.setOrgScheduleWorkspaceTab);
   const [viewMode, setViewMode] = React.useState<CalendarViewMode>("week");
   const [anchorDate, setAnchorDate] = React.useState<string>(todayIso);
   const [customFrom, setCustomFrom] = React.useState<string>("");
@@ -147,10 +149,6 @@ export function OrgScheduleCalendar({
   const [keyword, setKeyword] = React.useState("");
   const [selectedTechId, setSelectedTechId] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("ALL");
-
-  const [calendar, setCalendar] = React.useState<OrganizationCalendarResponse | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [reloadToken, setReloadToken] = React.useState(0);
 
   const [inspectorTech, setInspectorTech] = React.useState<TechnicianCalendarRow | null>(null);
   const [inspectorDay, setInspectorDay] = React.useState<CalendarDayItem | null>(null);
@@ -175,67 +173,52 @@ export function OrgScheduleCalendar({
     return () => window.clearTimeout(timer);
   }, [keyword]);
 
+  const pendingRequestsQuery = useQuery({
+    queryKey: ["org", organizationId, "schedule-requests", "PENDING"],
+    queryFn: () => orgOpsHttpApi.listOrganizationScheduleRequests(organizationId, "PENDING"),
+  });
+
+  const calendarQuery = useQuery({
+    queryKey: [
+      "org",
+      organizationId,
+      "schedule-calendar",
+      activeRange.from,
+      activeRange.to,
+      selectedTechId,
+      debouncedKeyword,
+      statusFilter,
+    ],
+    queryFn: () =>
+      orgOpsHttpApi.getOrganizationCalendar(organizationId, {
+        from: activeRange.from,
+        to: activeRange.to,
+        technicianId: selectedTechId || undefined,
+        keyword: debouncedKeyword || undefined,
+        status: statusFilter,
+      }),
+  });
+
+  React.useEffect(() => {
+    if (calendarQuery.error) {
+      toast.error(
+        calendarQuery.error instanceof Error
+          ? calendarQuery.error.message
+          : "Không thể tải lịch làm việc tổ chức"
+      );
+    }
+  }, [calendarQuery.error]);
+
   const fetchCalendar = React.useCallback(async () => {
-    setLoading(true);
-    setReloadToken((n) => n + 1);
-  }, []);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["org", organizationId, "schedule-calendar"] }),
+      queryClient.invalidateQueries({ queryKey: ["org", organizationId, "schedule-requests"] }),
+    ]);
+  }, [organizationId, queryClient]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadPendingCount() {
-      const pendingReqs = await orgOpsHttpApi
-        .listOrganizationScheduleRequests(organizationId, "PENDING")
-        .catch(() => null);
-      if (!cancelled && pendingReqs !== null) {
-        setPendingRequestCount(pendingReqs.length);
-      }
-    }
-    void loadPendingCount();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, reloadToken]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = await orgOpsHttpApi.getOrganizationCalendar(organizationId, {
-          from: activeRange.from,
-          to: activeRange.to,
-          technicianId: selectedTechId || undefined,
-          keyword: debouncedKeyword || undefined,
-          status: statusFilter,
-        });
-        if (!cancelled) {
-          setCalendar(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(
-            err instanceof Error ? err.message : "Không thể tải lịch làm việc tổ chức"
-          );
-          setCalendar(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    organizationId,
-    activeRange.from,
-    activeRange.to,
-    selectedTechId,
-    debouncedKeyword,
-    statusFilter,
-    reloadToken,
-  ]);
+  const calendar = calendarQuery.data ?? null;
+  const loading = calendarQuery.isFetching;
+  const pendingRequestCount = pendingRequestsQuery.data?.length ?? 0;
 
   async function loadTechnicianDetail(techId: string) {
     setLoadingDetail(true);
@@ -383,7 +366,6 @@ export function OrgScheduleCalendar({
           onReviewed={async () => {
             await fetchCalendar();
           }}
-          onPendingCountChange={setPendingRequestCount}
         />
       ) : (
         <>

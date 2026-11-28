@@ -1,14 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
+import { adminHttpApi } from "@/features/admin/api/admin.http";
 import { Badge } from "@/shared/ui/badge";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Button } from "@/shared/ui/button";
 import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { Input } from "@/shared/ui/input";
-import type { CategoryQualificationItem } from "@/features/org-ops/components/org-qualifications-panel";
+import type { CategoryQualificationItem } from "@/features/org-ops/api/org-ops.http";
 
 const CATEGORY_LABELS: Record<string, string> = {
   AC_REPAIR_INSTALL: "Sửa chữa & Lắp đặt máy lạnh",
@@ -28,42 +29,43 @@ export function AdminQualificationsPanel({
 }: {
   organizationId: string;
 }) {
-  const [items, setItems] = React.useState<CategoryQualificationItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const queryClient = useQueryClient();
   const [reasons, setReasons] = React.useState<Record<string, string>>({});
-  const [busyKey, setBusyKey] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let active = true;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `/api/gateway/admin/providers/${encodeURIComponent(organizationId)}/qualifications`,
-          {
-            cache: "no-store",
-            headers: { "x-homecare-scope": "personal" },
-          }
-        );
-        const json = (await res.json()) as ApiResponse<
-          CategoryQualificationItem[]
-        >;
-        if (active) {
-          setItems(unwrapApiResponse(json));
-        }
-      } catch {
-        if (active) setItems([]);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [organizationId]);
+  const queryKey = ["admin", "provider-qualifications", organizationId] as const;
 
-  async function handleVerify(
+  const qualificationsQuery = useQuery({
+    queryKey,
+    queryFn: () => adminHttpApi.adminListProviderQualifications(organizationId),
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: (vars: {
+      category: string;
+      decision: "VERIFIED" | "REJECTED" | "REVOKED";
+      reason?: string;
+    }) =>
+      adminHttpApi.adminVerifyProviderQualification(
+        organizationId,
+        vars.category,
+        { decision: vars.decision, reason: vars.reason }
+      ),
+    onSuccess: (updated, vars) => {
+      queryClient.setQueryData<CategoryQualificationItem[]>(queryKey, (prev = []) =>
+        prev.map((it) => (it.category === vars.category ? updated : it))
+      );
+      toast.success(
+        `Đã cập nhật chứng chỉ ${CATEGORY_LABELS[vars.category] ?? vars.category}.`
+      );
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể cập nhật chứng chỉ."
+      );
+    },
+  });
+
+  function handleVerify(
     category: string,
     decision: "VERIFIED" | "REJECTED" | "REVOKED"
   ) {
@@ -72,36 +74,15 @@ export function AdminQualificationsPanel({
       toast.error("Vui lòng nhập lý do từ chối hoặc thu hồi.");
       return;
     }
-    setBusyKey(category);
-    try {
-      const res = await fetch(
-        `/api/gateway/admin/providers/${encodeURIComponent(organizationId)}/qualifications/${encodeURIComponent(category)}/verify`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-homecare-scope": "personal",
-          },
-          body: JSON.stringify({
-            decision,
-            reason: reason || undefined,
-          }),
-        }
-      );
-      const json = (await res.json()) as ApiResponse<CategoryQualificationItem>;
-      const updated = unwrapApiResponse(json);
-      setItems((prev) =>
-        prev.map((it) => (it.category === category ? updated : it))
-      );
-      toast.success(`Đã cập nhật chứng chỉ ${CATEGORY_LABELS[category] ?? category}.`);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể cập nhật chứng chỉ."
-      );
-    } finally {
-      setBusyKey(null);
-    }
+    verifyMutation.mutate({
+      category,
+      decision,
+      reason: reason || undefined,
+    });
   }
+
+  const items = qualificationsQuery.data ?? [];
+  const busyKey = verifyMutation.isPending ? verifyMutation.variables?.category ?? null : null;
 
   return (
     <section className="rounded-xl border border-border bg-surface">
@@ -111,7 +92,7 @@ export function AdminQualificationsPanel({
         </h2>
       </div>
       <div className="p-5">
-        {loading ? (
+        {qualificationsQuery.isPending ? (
           <div
             className="flex flex-col gap-3"
             role="status"
@@ -180,7 +161,7 @@ export function AdminQualificationsPanel({
                         type="button"
                         size="sm"
                         disabled={isBusy || item.status === "VERIFIED"}
-                        onClick={() => void handleVerify(item.category, "VERIFIED")}
+                        onClick={() => handleVerify(item.category, "VERIFIED")}
                       >
                         Duyệt
                       </Button>
@@ -189,7 +170,7 @@ export function AdminQualificationsPanel({
                         size="sm"
                         variant="outline"
                         disabled={isBusy}
-                        onClick={() => void handleVerify(item.category, "REJECTED")}
+                        onClick={() => handleVerify(item.category, "REJECTED")}
                       >
                         Từ chối
                       </Button>
@@ -199,7 +180,7 @@ export function AdminQualificationsPanel({
                           size="sm"
                           variant="destructive"
                           disabled={isBusy}
-                          onClick={() => void handleVerify(item.category, "REVOKED")}
+                          onClick={() => handleVerify(item.category, "REVOKED")}
                         >
                           Thu hồi
                         </Button>

@@ -1,14 +1,27 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AdminDisputesPanel } from "../components/admin-disputes-panel";
 import { disputesHttpApi } from "../api/disputes.http";
+import { useUiStore } from "@/shared/store/ui-store";
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 describe("AdminDisputesPanel Notification Failed tab", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useUiStore.getState().resetUiStore();
   });
 
-  it("switches to Notification Failed tab, inspects detail, and triggers retry with If-Match", async () => {
+  it("switches to Notification Failed tab via Zustand, inspects detail, and triggers retry with If-Match", async () => {
     const detailSpy = vi
       .spyOn(disputesHttpApi, "adminGetNotificationFailedBooking")
       .mockResolvedValue({
@@ -45,7 +58,7 @@ describe("AdminDisputesPanel Notification Failed tab", () => {
         version: 5,
       });
 
-    render(
+    renderWithQueryClient(
       <AdminDisputesPanel
         initialDisputes={[]}
         initialNotificationFailed={[
@@ -65,6 +78,7 @@ describe("AdminDisputesPanel Notification Failed tab", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Notification Failed \(1\)/i }));
+    expect(useUiStore.getState().adminDisputesActiveTab).toBe("NOTIFICATION_FAILED");
     expect(screen.getByText("Ve sinh dieu hoa")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Chi tiết/i }));

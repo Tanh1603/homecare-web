@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Clock, Inbox, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -10,6 +11,7 @@ import {
   type ScheduleChangeRequestType,
   type ScheduleConflictItem,
 } from "../api/org-ops.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -46,83 +48,81 @@ export function OrgScheduleRequestsPanel({
   onReviewed: () => Promise<void> | void;
   onPendingCountChange?: (count: number) => void;
 }) {
-  const [statusFilter, setStatusFilter] = React.useState("PENDING");
-  const [items, setItems] = React.useState<ScheduleChangeRequestItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [reloadToken, setReloadToken] = React.useState(0);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const statusFilter = useUiStore((s) => s.orgScheduleRequestsStatus);
+  const setStatusFilter = useUiStore((s) => s.setOrgScheduleRequestsStatus);
+
   const [noteById, setNoteById] = React.useState<Record<string, string>>({});
   const [conflicts, setConflicts] = React.useState<ScheduleConflictItem[]>([]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const list = await orgOpsHttpApi.listOrganizationScheduleRequests(
-          organizationId,
-          statusFilter
-        );
-        if (!cancelled) {
-          setItems(list);
-          if (statusFilter === "PENDING" || statusFilter === "ALL") {
-            const pendingCount = list.filter((r) => r.status === "PENDING").length;
-            onPendingCountChange?.(pendingCount);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(
-            err instanceof Error
-              ? err.message
-              : "Không thể tải danh sách yêu cầu điều chỉnh lịch"
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, statusFilter, reloadToken, onPendingCountChange]);
+  const queryKey = ["org", organizationId, "schedule-requests", statusFilter] as const;
 
-  async function handleReview(req: ScheduleChangeRequestItem, approve: boolean) {
+  const requestsQuery = useQuery({
+    queryKey,
+    queryFn: () =>
+      orgOpsHttpApi.listOrganizationScheduleRequests(organizationId, statusFilter),
+  });
+
+  React.useEffect(() => {
+    if (requestsQuery.error) {
+      toast.error(
+        requestsQuery.error instanceof Error
+          ? requestsQuery.error.message
+          : "Không thể tải danh sách yêu cầu điều chỉnh lịch"
+      );
+    }
+  }, [requestsQuery.error]);
+
+  React.useEffect(() => {
+    if (requestsQuery.data && (statusFilter === "PENDING" || statusFilter === "ALL")) {
+      const pendingCount = requestsQuery.data.filter((r) => r.status === "PENDING").length;
+      onPendingCountChange?.(pendingCount);
+    }
+  }, [requestsQuery.data, statusFilter, onPendingCountChange]);
+
+  const reviewMutation = useMutation({
+    mutationFn: (vars: { requestId: string; approve: boolean; reviewNote?: string }) =>
+      orgOpsHttpApi.reviewOrganizationScheduleRequest(organizationId, vars.requestId, {
+        approve: vars.approve,
+        reviewNote: vars.reviewNote,
+      }),
+    onSuccess: async (_res, vars) => {
+      toast.success(
+        vars.approve
+          ? "Đã duyệt yêu cầu và tự động áp dụng vào lịch làm việc."
+          : "Đã từ chối yêu cầu và thông báo cho kỹ thuật viên."
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ["org", organizationId, "schedule-requests"],
+      });
+      await onReviewed();
+    },
+    onError: (err) => {
+      if (err instanceof ScheduleConflictError) {
+        setConflicts(err.conflicts);
+        toast.error(err.message);
+      } else {
+        toast.error(err instanceof Error ? err.message : "Không thể xử lý yêu cầu");
+      }
+    },
+  });
+
+  function handleReview(req: ScheduleChangeRequestItem, approve: boolean) {
     const note = (noteById[req.id] ?? "").trim();
     if (!approve && !note) {
       toast.error("Vui lòng nhập lý do từ chối trước khi xác nhận.");
       return;
     }
     setConflicts([]);
-    setBusyId(req.id);
-    try {
-      await orgOpsHttpApi.reviewOrganizationScheduleRequest(
-        organizationId,
-        req.id,
-        { approve, reviewNote: note || undefined }
-      );
-      toast.success(
-        approve
-          ? "Đã duyệt yêu cầu và tự động áp dụng vào lịch làm việc."
-          : "Đã từ chối yêu cầu và thông báo cho kỹ thuật viên."
-      );
-      setReloadToken((n) => n + 1);
-      await onReviewed();
-    } catch (err) {
-      if (err instanceof ScheduleConflictError) {
-        setConflicts(err.conflicts);
-        toast.error(err.message);
-      } else {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể xử lý yêu cầu"
-        );
-      }
-    } finally {
-      setBusyId(null);
-    }
+    reviewMutation.mutate({
+      requestId: req.id,
+      approve,
+      reviewNote: note || undefined,
+    });
   }
+
+  const items = requestsQuery.data ?? [];
+  const busyId = reviewMutation.isPending ? reviewMutation.variables?.requestId ?? null : null;
 
   return (
     <div className="space-y-4">
@@ -139,10 +139,7 @@ export function OrgScheduleRequestsPanel({
           <NativeSelect
             aria-label="Lọc trạng thái yêu cầu"
             value={statusFilter}
-            onChange={(e) => {
-              setLoading(true);
-              setStatusFilter(e.target.value);
-            }}
+            onChange={(e) => setStatusFilter(e.target.value)}
           >
             <NativeSelectOption value="PENDING">Đang chờ duyệt</NativeSelectOption>
             <NativeSelectOption value="ALL">Tất cả</NativeSelectOption>
@@ -172,7 +169,7 @@ export function OrgScheduleRequestsPanel({
         </Alert>
       ) : null}
 
-      {loading ? (
+      {requestsQuery.isPending ? (
         <div className="space-y-3">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -255,7 +252,7 @@ export function OrgScheduleRequestsPanel({
                       type="button"
                       size="sm"
                       disabled={busy}
-                      onClick={() => void handleReview(req, true)}
+                      onClick={() => handleReview(req, true)}
                     >
                       <Check className="h-3.5 w-3.5" />
                       Duyệt &amp; áp dụng
@@ -265,7 +262,7 @@ export function OrgScheduleRequestsPanel({
                       size="sm"
                       variant="outline"
                       disabled={busy}
-                      onClick={() => void handleReview(req, false)}
+                      onClick={() => handleReview(req, false)}
                       className="text-destructive hover:text-destructive"
                     >
                       <X className="h-3.5 w-3.5" />

@@ -6,7 +6,15 @@ import {
   it,
   vi,
 } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import { OrganizationsTable } from "../components/organizations-table";
 import { AdminUsersTable } from "../components/admin-users-table";
 import type { Organization } from "@/features/organizations/contracts/organization";
@@ -59,7 +67,7 @@ describe("Admin server-side tables", () => {
   });
 
   it("OrganizationsTable drives status, debounced search, and sort via URL params and resets page=1", () => {
-    render(
+    renderWithQuery(
       <OrganizationsTable
         initialData={[sampleOrg]}
         initialStatus="ALL"
@@ -94,7 +102,7 @@ describe("Admin server-side tables", () => {
   });
 
   it("AdminUsersTable drives role, status, sort, and debounced search via URL params and resets page=1", () => {
-    render(
+    renderWithQuery(
       <AdminUsersTable
         initialUsers={[sampleUser]}
         initialQuery=""

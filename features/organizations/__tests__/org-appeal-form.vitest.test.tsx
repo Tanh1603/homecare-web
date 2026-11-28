@@ -1,7 +1,15 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { OrgAppealForm } from "@/features/organizations/components/org-appeal-form";
 import { organizationsHttpAdapter } from "@/features/organizations/api/organizations.http";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 vi.mock("@/features/organizations/api/organizations.http", () => ({
   organizationsHttpAdapter: {
@@ -21,7 +29,7 @@ describe("OrgAppealForm", () => {
       slaDueAt: "2026-11-30T00:00:00Z",
     });
 
-    render(<OrgAppealForm organizationId="org-1" />);
+    renderWithQuery(<OrgAppealForm organizationId="org-1" />);
 
     fireEvent.change(screen.getByLabelText(/Mã quyết định chế tài/i), {
       target: { value: "enf-123" },

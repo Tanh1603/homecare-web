@@ -1,3 +1,4 @@
+import { AxiosError, type AxiosRequestConfig } from "axios";
 import {
   extractPageItems,
   GatewayApiError,
@@ -5,6 +6,11 @@ import {
   type ApiResponse,
   type PageResponse,
 } from "@/shared/api/api-envelope";
+import {
+  browserHttpClient,
+  gatewayHeaders,
+  requestGateway,
+} from "@/shared/api/http-client";
 import type {
   OrgBookingItem,
   OrgOrderItem,
@@ -201,6 +207,45 @@ function unwrapScheduleResponse<T>(payload: ApiResponse<T>): T {
   return unwrapApiResponse(payload);
 }
 
+async function requestScheduleGateway<T>(config: AxiosRequestConfig): Promise<T> {
+  try {
+    const res = await browserHttpClient.request<ApiResponse<T>>(config);
+    if (res.status === 204 || res.data == null || (res.data as unknown) === "") {
+      return undefined as T;
+    }
+    return unwrapScheduleResponse(res.data);
+  } catch (err) {
+    if (err instanceof GatewayApiError) {
+      throw err;
+    }
+    if (err instanceof AxiosError) {
+      const payload = err.response?.data as
+        | ApiResponse<{ conflicts?: ScheduleConflictItem[] } | null>
+        | undefined;
+      if (payload && typeof payload === "object") {
+        if (payload.code === 409 || payload.errorCode === "SCHEDULE_ALLOCATION_CONFLICT") {
+          throw new ScheduleConflictError(payload);
+        }
+        if ("message" in payload) {
+          throw new GatewayApiError({
+            message: payload.message || `Gateway HTTP ${err.response?.status ?? 500}`,
+            status: payload.code || err.response?.status || 500,
+            errorCode: payload.errorCode,
+            traceId: payload.traceId,
+            fieldErrors: payload.errors,
+          });
+        }
+      }
+      throw new GatewayApiError({
+        message: err.message || "Không thể kết nối tới HomeCare API Gateway",
+        status: err.response?.status ?? 502,
+        errorCode: err.response ? undefined : "GATEWAY_UNAVAILABLE",
+      });
+    }
+    throw err;
+  }
+}
+
 export interface BookingWorkEvidenceDto {
   id: string;
   bookingId: string;
@@ -255,17 +300,14 @@ export interface BookingDetailDto {
   workUpdates?: BookingWorkUpdateDto[];
 }
 
-function orgHeaders(organizationId: string, etag?: string): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Organization-Id": organizationId,
-  };
-  if (etag) headers["If-Match"] = etag;
-  return headers;
-}
-
-function formatVersionEtag(version?: number): string | undefined {
-  return typeof version === "number" ? `"v${version}"` : undefined;
+export interface CategoryQualificationItem {
+  id: string;
+  providerId: string;
+  category: string;
+  status: "UNVERIFIED" | "VERIFIED" | "REJECTED" | "REVOKED";
+  evidenceRefs?: string | null;
+  reason?: string | null;
+  verifiedAt?: string | null;
 }
 
 export const orgOpsHttpApi = {
@@ -273,31 +315,22 @@ export const orgOpsHttpApi = {
     organizationId: string,
     bookingId: string
   ): Promise<BookingDetailDto> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<BookingDetailDto>;
-    return unwrapApiResponse(json);
+    return requestGateway<BookingDetailDto>({
+      url: `/bookings/${encodeURIComponent(bookingId)}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async listActiveTechnicians(
     organizationId: string
   ): Promise<OrgTechnicianItem[]> {
-    const res = await fetch(
-      `/api/gateway/technicians?providerId=${encodeURIComponent(organizationId)}&size=100`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
-      PageResponse<OrgTechnicianItem> | OrgTechnicianItem[]
-    >;
-    return extractPageItems(unwrapApiResponse(json));
+    const data = await requestGateway<PageResponse<OrgTechnicianItem> | OrgTechnicianItem[]>({
+      url: `/technicians?providerId=${encodeURIComponent(organizationId)}&size=100`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
+    return extractPageItems(data);
   },
 
   async assignTechnician(
@@ -306,19 +339,15 @@ export const orgOpsHttpApi = {
     input: { technicianId: string; reason?: string },
     version?: number
   ): Promise<BookingDetailDto> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/assign`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-        body: JSON.stringify({
-          technicianId: input.technicianId,
-          reason: input.reason?.trim() || undefined,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<BookingDetailDto>;
-    return unwrapApiResponse(json);
+    return requestGateway<BookingDetailDto>({
+      url: `/bookings/${encodeURIComponent(bookingId)}/assign`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId, version }),
+      data: {
+        technicianId: input.technicianId,
+        reason: input.reason?.trim() || undefined,
+      },
+    });
   },
 
   async cancelBooking(
@@ -327,28 +356,20 @@ export const orgOpsHttpApi = {
     version?: number,
     reason?: string
   ): Promise<OrgBookingItem> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/cancel`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-        body: JSON.stringify({ reason: reason?.trim() || "Hủy bởi đối tác" }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgBookingItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgBookingItem>({
+      url: `/bookings/${encodeURIComponent(bookingId)}/cancel`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId, version }),
+      data: { reason: reason?.trim() || "Hủy bởi đối tác" },
+    });
   },
 
   async getOrder(organizationId: string, orderId: string): Promise<OrgOrderItem> {
-    const res = await fetch(
-      `/api/gateway/orders/${encodeURIComponent(orderId)}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgOrderItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgOrderItem>({
+      url: `/orders/${encodeURIComponent(orderId)}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async fulfillOrderLine(
@@ -356,15 +377,11 @@ export const orgOpsHttpApi = {
     orderId: string,
     lineId: string
   ): Promise<OrgOrderItem> {
-    const res = await fetch(
-      `/api/gateway/orders/${encodeURIComponent(orderId)}/lines/${encodeURIComponent(lineId)}/fulfillment`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgOrderItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgOrderItem>({
+      url: `/orders/${encodeURIComponent(orderId)}/lines/${encodeURIComponent(lineId)}/fulfillment`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async resolveOrderReturn(
@@ -374,19 +391,15 @@ export const orgOpsHttpApi = {
     input: { action: "APPROVE" | "REJECT"; resolutionNote?: string },
     version?: number
   ): Promise<OrgReturnItem> {
-    const res = await fetch(
-      `/api/gateway/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/resolve`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-        body: JSON.stringify({
-          action: input.action,
-          resolutionNote: input.resolutionNote?.trim() || undefined,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgReturnItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgReturnItem>({
+      url: `/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/resolve`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId, version }),
+      data: {
+        action: input.action,
+        resolutionNote: input.resolutionNote?.trim() || undefined,
+      },
+    });
   },
 
   async confirmManualRefund(
@@ -403,16 +416,12 @@ export const orgOpsHttpApi = {
             reference: input.reference.trim(),
             note: input.note?.trim() || undefined,
           };
-    const res = await fetch(
-      `/api/gateway/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/confirm-manual-refund`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-        body: JSON.stringify(payload),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgReturnItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgReturnItem>({
+      url: `/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/confirm-manual-refund`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId, version }),
+      data: payload,
+    });
   },
 
   async retryRefund(
@@ -421,15 +430,11 @@ export const orgOpsHttpApi = {
     returnId: string,
     version?: number
   ): Promise<OrgReturnItem> {
-    const res = await fetch(
-      `/api/gateway/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/retry-refund`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgReturnItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgReturnItem>({
+      url: `/orders/${encodeURIComponent(orderId)}/returns/${encodeURIComponent(returnId)}/retry-refund`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId, version }),
+    });
   },
 
   async createService(
@@ -443,13 +448,12 @@ export const orgOpsHttpApi = {
       active: boolean;
     }
   ): Promise<OrgServiceItem> {
-    const res = await fetch("/api/gateway/services", {
+    return requestGateway<OrgServiceItem>({
+      url: "/services",
       method: "POST",
-      headers: orgHeaders(organizationId),
-      body: JSON.stringify({ ...input, providerId: organizationId }),
+      headers: gatewayHeaders({ organizationId }),
+      data: { ...input, providerId: organizationId },
     });
-    const json = (await res.json()) as ApiResponse<OrgServiceItem>;
-    return unwrapApiResponse(json);
   },
 
   async updateService(
@@ -466,16 +470,12 @@ export const orgOpsHttpApi = {
       active?: boolean;
     }
   ): Promise<OrgServiceItem> {
-    const res = await fetch(
-      `/api/gateway/services/${encodeURIComponent(serviceId)}`,
-      {
-        method: "PATCH",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgServiceItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgServiceItem>({
+      url: `/services/${encodeURIComponent(serviceId)}`,
+      method: "PATCH",
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
+    });
   },
 
   async replaceServiceCoverage(
@@ -483,16 +483,12 @@ export const orgOpsHttpApi = {
     serviceId: string,
     areas: OrgServiceCoverageArea[]
   ): Promise<OrgServiceCoverageArea[]> {
-    const res = await fetch(
-      `/api/gateway/services/${encodeURIComponent(serviceId)}/coverage`,
-      {
-        method: "PUT",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({ areas }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgServiceCoverageArea[]>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgServiceCoverageArea[]>({
+      url: `/services/${encodeURIComponent(serviceId)}/coverage`,
+      method: "PUT",
+      headers: gatewayHeaders({ organizationId }),
+      data: { areas },
+    });
   },
 
   async listServiceRequests(
@@ -500,17 +496,14 @@ export const orgOpsHttpApi = {
     page = 1,
     size = 50
   ): Promise<OrgServiceRequestItem[]> {
-    const res = await fetch(
-      `/api/gateway/service-requests?page=${page}&size=${size}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
+    const data = await requestGateway<
       PageResponse<OrgServiceRequestItem> | OrgServiceRequestItem[]
-    >;
-    return extractPageItems(unwrapApiResponse(json));
+    >({
+      url: `/service-requests?page=${page}&size=${size}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
+    return extractPageItems(data);
   },
 
   async acceptServiceRequest(
@@ -518,15 +511,11 @@ export const orgOpsHttpApi = {
     requestId: string,
     fixedPrice = 0
   ): Promise<OrgServiceRequestItem> {
-    const res = await fetch(
-      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/provider-accept?fixedPrice=${fixedPrice}`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgServiceRequestItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgServiceRequestItem>({
+      url: `/service-requests/${encodeURIComponent(requestId)}/provider-accept?fixedPrice=${fixedPrice}`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async rejectServiceRequest(
@@ -534,16 +523,12 @@ export const orgOpsHttpApi = {
     requestId: string,
     reason: string
   ): Promise<OrgServiceRequestItem> {
-    const res = await fetch(
-      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/provider-reject`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({ reason }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgServiceRequestItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgServiceRequestItem>({
+      url: `/service-requests/${encodeURIComponent(requestId)}/provider-reject`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: { reason },
+    });
   },
 
   async issueQuotation(
@@ -573,28 +558,12 @@ export const orgOpsHttpApi = {
     supersedeReason?: string | null;
     status: string;
   }> {
-    const res = await fetch(
-      `/api/gateway/service-requests/${encodeURIComponent(requestId)}/quotations`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      id: string;
-      serviceRequestId?: string | null;
-      bookingId?: string | null;
-      quoteKind?: "INITIAL" | "REVISED" | string;
-      version: number;
-      itemsTotal: number;
-      inspectionFeePaid: number;
-      inspectionFeeCredit: number;
-      totalDueAfterCredit: number;
-      supersedeReason?: string | null;
-      status: string;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway({
+      url: `/service-requests/${encodeURIComponent(requestId)}/quotations`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
+    });
   },
 
   async issueRevisedQuotation(
@@ -619,37 +588,20 @@ export const orgOpsHttpApi = {
     totalDueAfterCredit: number;
     status: string;
   }> {
-    const res = await fetch(
-      `/api/gateway/bookings/${encodeURIComponent(bookingId)}/revised-quotations`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      id: string;
-      bookingId?: string | null;
-      quoteKind?: string;
-      version: number;
-      itemsTotal: number;
-      totalDueAfterCredit: number;
-      status: string;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway({
+      url: `/bookings/${encodeURIComponent(bookingId)}/revised-quotations`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
+    });
   },
 
   async deleteService(organizationId: string, serviceId: string): Promise<void> {
-    const res = await fetch(
-      `/api/gateway/services/${encodeURIComponent(serviceId)}`,
-      {
-        method: "DELETE",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapApiResponse(json);
+    await requestGateway<null>({
+      url: `/services/${encodeURIComponent(serviceId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async createProduct(
@@ -668,13 +620,12 @@ export const orgOpsHttpApi = {
       status: "ACTIVE" | "INACTIVE";
     }
   ): Promise<OrgProductItem> {
-    const res = await fetch("/api/gateway/products", {
+    return requestGateway<OrgProductItem>({
+      url: "/products",
       method: "POST",
-      headers: orgHeaders(organizationId),
-      body: JSON.stringify({ ...input, merchantId: organizationId }),
+      headers: gatewayHeaders({ organizationId }),
+      data: { ...input, merchantId: organizationId },
     });
-    const json = (await res.json()) as ApiResponse<OrgProductItem>;
-    return unwrapApiResponse(json);
   },
 
   async updateProduct(
@@ -694,16 +645,12 @@ export const orgOpsHttpApi = {
       status: "ACTIVE" | "INACTIVE";
     }>
   ): Promise<OrgProductItem> {
-    const res = await fetch(
-      `/api/gateway/products/${encodeURIComponent(productId)}`,
-      {
-        method: "PATCH",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgProductItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgProductItem>({
+      url: `/products/${encodeURIComponent(productId)}`,
+      method: "PATCH",
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
+    });
   },
 
   async updateInventory(
@@ -711,29 +658,20 @@ export const orgOpsHttpApi = {
     productId: string,
     availableQty: number
   ): Promise<OrgProductItem> {
-    const res = await fetch(
-      `/api/gateway/products/${encodeURIComponent(productId)}/inventory`,
-      {
-        method: "PATCH",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({ availableQty }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgProductItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgProductItem>({
+      url: `/products/${encodeURIComponent(productId)}/inventory`,
+      method: "PATCH",
+      headers: gatewayHeaders({ organizationId }),
+      data: { availableQty },
+    });
   },
 
   async deleteProduct(organizationId: string, productId: string): Promise<void> {
-    const res = await fetch(
-      `/api/gateway/products/${encodeURIComponent(productId)}`,
-      {
-        method: "DELETE",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapApiResponse(json);
+    await requestGateway<null>({
+      url: `/products/${encodeURIComponent(productId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async createTechnician(
@@ -746,13 +684,12 @@ export const orgOpsHttpApi = {
       status: "ACTIVE" | "INACTIVE";
     }
   ): Promise<OrgTechnicianItem> {
-    const res = await fetch("/api/gateway/technicians", {
+    return requestGateway<OrgTechnicianItem>({
+      url: "/technicians",
       method: "POST",
-      headers: orgHeaders(organizationId),
-      body: JSON.stringify({ ...input, providerId: organizationId }),
+      headers: gatewayHeaders({ organizationId }),
+      data: { ...input, providerId: organizationId },
     });
-    const json = (await res.json()) as ApiResponse<OrgTechnicianItem>;
-    return unwrapApiResponse(json);
   },
 
   async updateTechnician(
@@ -765,49 +702,37 @@ export const orgOpsHttpApi = {
       status: "ACTIVE" | "INACTIVE";
     }>
   ): Promise<OrgTechnicianItem> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}`,
-      {
-        method: "PATCH",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgTechnicianItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgTechnicianItem>({
+      url: `/technicians/${encodeURIComponent(technicianId)}`,
+      method: "PATCH",
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
+    });
   },
 
   async deleteTechnician(
     organizationId: string,
     technicianId: string
   ): Promise<void> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}`,
-      {
-        method: "DELETE",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapApiResponse(json);
+    await requestGateway<null>({
+      url: `/technicians/${encodeURIComponent(technicianId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async listTechnicianSchedules(
     organizationId: string,
     technicianId: string
   ): Promise<ScheduleWindowItem[]> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedules?page=1&size=50`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
+    const data = await requestGateway<
       PageResponse<ScheduleWindowItem> | ScheduleWindowItem[]
-    >;
-    return extractPageItems(unwrapApiResponse(json));
+    >({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedules?page=1&size=50`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
+    return extractPageItems(data);
   },
 
   async createTechnicianSchedule(
@@ -815,19 +740,15 @@ export const orgOpsHttpApi = {
     technicianId: string,
     input: { startsAt: string; endsAt: string }
   ): Promise<ScheduleWindowItem> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedules`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({
-          startsAt: input.startsAt,
-          endsAt: input.endsAt,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleWindowItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<ScheduleWindowItem>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedules`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: {
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+      },
+    });
   },
 
   async deleteTechnicianSchedule(
@@ -836,33 +757,22 @@ export const orgOpsHttpApi = {
     windowId: string,
     version?: number
   ): Promise<void> {
-    const headers: Record<string, string> = {
-      "X-Organization-Id": organizationId,
-    };
-    const etag = formatVersionEtag(version);
-    if (etag) headers["If-Match"] = etag;
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedules/${encodeURIComponent(windowId)}`,
-      { method: "DELETE", headers }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapScheduleResponse(json);
+    await requestScheduleGateway<null>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedules/${encodeURIComponent(windowId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId, version }),
+    });
   },
 
   async getTechnicianWeeklySchedule(
     organizationId: string,
     technicianId: string
   ): Promise<WeeklyScheduleOverview> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<WeeklyScheduleOverview>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<WeeklyScheduleOverview>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async upsertTechnicianWeeklySchedule(
@@ -876,21 +786,17 @@ export const orgOpsHttpApi = {
     },
     version?: number
   ): Promise<WeeklyScheduleOverview> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
-      {
-        method: "PUT",
-        headers: orgHeaders(organizationId, formatVersionEtag(version)),
-        body: JSON.stringify({
-          timezone: input.timezone || "Asia/Ho_Chi_Minh",
-          effectiveFrom: input.effectiveFrom,
-          effectiveUntil: input.effectiveUntil || null,
-          intervals: input.intervals,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<WeeklyScheduleOverview>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<WeeklyScheduleOverview>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/weekly-schedules`,
+      method: "PUT",
+      headers: gatewayHeaders({ organizationId, version }),
+      data: {
+        timezone: input.timezone || "Asia/Ho_Chi_Minh",
+        effectiveFrom: input.effectiveFrom,
+        effectiveUntil: input.effectiveUntil || null,
+        intervals: input.intervals,
+      },
+    });
   },
 
   async endTechnicianWeeklySchedule(
@@ -902,18 +808,11 @@ export const orgOpsHttpApi = {
     const query = effectiveUntil
       ? `?effectiveUntil=${encodeURIComponent(effectiveUntil)}`
       : "";
-    const headers: Record<string, string> = {
-      "X-Organization-Id": organizationId,
-    };
-    const etag = formatVersionEtag(version);
-    if (etag) headers["If-Match"] = etag;
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/weekly-schedules${query}`,
-      { method: "DELETE", headers }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapScheduleResponse(json);
+    await requestScheduleGateway<null>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/weekly-schedules${query}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId, version }),
+    });
   },
 
   async listTechnicianScheduleExceptions(
@@ -926,15 +825,11 @@ export const orgOpsHttpApi = {
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     const qs = params.toString() ? `?${params.toString()}` : "";
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions${qs}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleExceptionItem[]>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<ScheduleExceptionItem[]>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions${qs}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async upsertTechnicianScheduleExceptions(
@@ -948,22 +843,18 @@ export const orgOpsHttpApi = {
       intervals?: LocalTimeInterval[];
     }
   ): Promise<ScheduleExceptionItem[]> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions`,
-      {
-        method: "PUT",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({
-          fromDate: input.fromDate,
-          toDate: input.toDate || input.fromDate,
-          exceptionType: input.exceptionType,
-          reason: input.reason?.trim() || undefined,
-          intervals: input.intervals ?? [],
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleExceptionItem[]>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<ScheduleExceptionItem[]>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions`,
+      method: "PUT",
+      headers: gatewayHeaders({ organizationId }),
+      data: {
+        fromDate: input.fromDate,
+        toDate: input.toDate || input.fromDate,
+        exceptionType: input.exceptionType,
+        reason: input.reason?.trim() || undefined,
+        intervals: input.intervals ?? [],
+      },
+    });
   },
 
   async deleteTechnicianScheduleException(
@@ -972,21 +863,11 @@ export const orgOpsHttpApi = {
     exceptionId: string,
     version?: number
   ): Promise<void> {
-    const headers: Record<string, string> = {
-      "X-Organization-Id": organizationId,
-    };
-    const etag = formatVersionEtag(version);
-    if (etag) headers["If-Match"] = etag;
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions/${encodeURIComponent(exceptionId)}`,
-      {
-        method: "DELETE",
-        headers,
-      }
-    );
-    if (res.status === 204) return;
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapScheduleResponse(json);
+    await requestScheduleGateway<null>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedule-exceptions/${encodeURIComponent(exceptionId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId, version }),
+    });
   },
 
   async getOrganizationCalendar(
@@ -1005,30 +886,22 @@ export const orgOpsHttpApi = {
     if (params.technicianId) qs.set("technicianId", params.technicianId);
     if (params.keyword?.trim()) qs.set("keyword", params.keyword.trim());
     if (params.status && params.status !== "ALL") qs.set("status", params.status);
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/calendar?${qs.toString()}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrganizationCalendarResponse>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<OrganizationCalendarResponse>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/technicians/calendar?${qs.toString()}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async listTechnicianScheduleAudits(
     organizationId: string,
     technicianId: string
   ): Promise<ScheduleAuditItem[]> {
-    const res = await fetch(
-      `/api/gateway/technicians/${encodeURIComponent(technicianId)}/schedule-audits`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleAuditItem[]>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<ScheduleAuditItem[]>({
+      url: `/technicians/${encodeURIComponent(technicianId)}/schedule-audits`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async listOrganizationScheduleRequests(
@@ -1037,15 +910,11 @@ export const orgOpsHttpApi = {
   ): Promise<ScheduleChangeRequestItem[]> {
     const qs =
       status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests${qs}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleChangeRequestItem[]>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<ScheduleChangeRequestItem[]>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests${qs}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async reviewOrganizationScheduleRequest(
@@ -1053,33 +922,70 @@ export const orgOpsHttpApi = {
     requestId: string,
     input: { approve: boolean; reviewNote?: string }
   ): Promise<ScheduleChangeRequestItem> {
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests/${encodeURIComponent(requestId)}/review`,
-      {
-        method: "POST",
-        headers: orgHeaders(organizationId),
-        body: JSON.stringify({
-          approve: input.approve,
-          reviewNote: input.reviewNote?.trim() || undefined,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<ScheduleChangeRequestItem>;
-    return unwrapScheduleResponse(json);
+    return requestScheduleGateway<ScheduleChangeRequestItem>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/technicians/schedule-requests/${encodeURIComponent(requestId)}/review`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: {
+        approve: input.approve,
+        reviewNote: input.reviewNote?.trim() || undefined,
+      },
+    });
   },
 
   async getWarranty(
     organizationId: string,
     warrantyId: string
   ): Promise<OrgWarrantyItem> {
-    const res = await fetch(
-      `/api/gateway/warranties/${encodeURIComponent(warrantyId)}`,
-      {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrgWarrantyItem>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrgWarrantyItem>({
+      url: `/warranties/${encodeURIComponent(warrantyId)}`,
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
+  },
+
+  async listCurrentQualifications(
+    organizationId: string
+  ): Promise<CategoryQualificationItem[]> {
+    return requestGateway<CategoryQualificationItem[]>({
+      url: "/providers/current/qualifications",
+      method: "GET",
+      headers: gatewayHeaders({ organizationId }),
+    });
+  },
+
+  async upsertCurrentQualification(
+    organizationId: string,
+    category: string,
+    evidenceRefs: string
+  ): Promise<CategoryQualificationItem> {
+    return requestGateway<CategoryQualificationItem>({
+      url: `/providers/current/qualifications/${encodeURIComponent(category)}`,
+      method: "POST",
+      headers: gatewayHeaders({ organizationId }),
+      data: { evidenceRefs: evidenceRefs.trim() },
+    });
+  },
+
+  async deleteCurrentQualification(
+    organizationId: string,
+    category: string
+  ): Promise<void> {
+    await requestGateway<null>({
+      url: `/providers/current/qualifications/${encodeURIComponent(category)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId }),
+    });
+  },
+
+  async deleteOrganizationEvidence(
+    organizationId: string,
+    objectKey: string
+  ): Promise<void> {
+    await requestGateway<null>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/evidence?objectKey=${encodeURIComponent(objectKey)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ personal: true }),
+    });
   },
 };

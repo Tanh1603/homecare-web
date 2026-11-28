@@ -42,8 +42,10 @@ export function DataTable<TData extends RowData>({
   data,
   columns,
   searchPlaceholder = "Tìm kiếm...",
+  searchAriaLabel,
   emptyMessage = "Chưa có dữ liệu.",
   serverSide = false,
+  hideSearch = false,
   searchValue,
   onSearchChange,
   toolbarSlot,
@@ -51,8 +53,10 @@ export function DataTable<TData extends RowData>({
   data: TData[];
   columns: DataTableColumn<TData>[];
   searchPlaceholder?: string;
+  searchAriaLabel?: string;
   emptyMessage?: string;
   serverSide?: boolean;
+  hideSearch?: boolean;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   toolbarSlot?: React.ReactNode;
@@ -104,24 +108,29 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={controlledSearch ? searchValue : globalFilter}
-            onChange={(e) =>
-              controlledSearch
-                ? onSearchChange(e.target.value)
-                : setGlobalFilter(e.target.value)
-            }
-            placeholder={searchPlaceholder}
-            className="pl-9"
-          />
+      {!hideSearch || toolbarSlot ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {!hideSearch ? (
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={controlledSearch ? searchValue : globalFilter}
+                onChange={(e) =>
+                  controlledSearch
+                    ? onSearchChange(e.target.value)
+                    : setGlobalFilter(e.target.value)
+                }
+                placeholder={searchPlaceholder}
+                aria-label={searchAriaLabel}
+                className="pl-9"
+              />
+            </div>
+          ) : null}
+          {toolbarSlot ? (
+            <div className="flex flex-wrap items-center gap-2">{toolbarSlot}</div>
+          ) : null}
         </div>
-        {toolbarSlot ? (
-          <div className="flex flex-wrap items-center gap-2">{toolbarSlot}</div>
-        ) : null}
-      </div>
+      ) : null}
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <Table>

@@ -1,10 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { useUiStore } from "@/shared/store/ui-store";
 import { AdminWarrantiesPanel } from "../components/admin-warranties-panel";
 
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 describe("AdminWarrantiesPanel", () => {
+  beforeEach(() => {
+    useUiStore.getState().resetUiStore();
+  });
+
   it("renders device warranty verification queue and claims tab counts", () => {
-    render(
+    renderWithQuery(
       <AdminWarrantiesPanel
         initialWarranties={[
           {

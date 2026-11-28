@@ -1,5 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import { OrgServicesPanel } from "../components/org-services-panel";
 import type { OrgServiceItem } from "../api/org-ops.adapter";
 import { orgOpsHttpApi } from "../api/org-ops.http";
@@ -41,7 +49,7 @@ describe("OrgServicesPanel", () => {
   });
 
   it("renders Vietnamese category label in table and syncs NativeSelect, warranty range, and qualification alert in drawer", () => {
-    render(
+    renderWithQuery(
       <OrgServicesPanel
         organizationId="org-1"
         initialServices={[sampleService]}
@@ -99,7 +107,7 @@ describe("OrgServicesPanel", () => {
       status: "ACTIVE",
     });
 
-    render(<OrgServicesPanel organizationId="org-1" initialServices={[]} />);
+    renderWithQuery(<OrgServicesPanel organizationId="org-1" initialServices={[]} />);
     fireEvent.click(screen.getByRole("button", { name: /Thêm dịch vụ/i }));
 
     fireEvent.change(screen.getByLabelText(/Tên dịch vụ/i), {

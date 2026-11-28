@@ -1,15 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Eye, PauseCircle, Search } from "lucide-react";
+import { CheckCircle2, Eye, PauseCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { AdminUserItem } from "../api/admin.adapter";
 import { adminHttpApi } from "../api/admin.http";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { ContextInspector } from "@/shared/ui/context-inspector";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import {
   Dialog,
   DialogContent,
@@ -21,14 +22,6 @@ import { Label } from "@/shared/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate } from "@/shared/lib/utils";
 
 type RoleFilter = "ALL" | "ORGANIZATION" | "TECHNICIAN" | "CUSTOMER";
@@ -72,7 +65,6 @@ export function AdminUsersTable({
     action: "SUSPEND" | "REACTIVATE";
   } | null>(null);
   const [suspendReason, setSuspendReason] = React.useState("");
-  const [busyId, setBusyId] = React.useState<string | null>(null);
 
   function closeConfirmDialog() {
     setConfirmTarget(null);
@@ -124,19 +116,20 @@ export function AdminUsersTable({
 
   const sortValue = `${initialSortBy}:${initialSortDir}`;
 
-  async function handleConfirm() {
-    if (!confirmTarget) return;
-    const { user, action } = confirmTarget;
-    if (action === "SUSPEND" && !suspendReason.trim()) {
-      toast.error("Vui lòng nhập lý do tạm ngưng tài khoản.");
-      return;
-    }
-    setBusyId(user.id);
-    try {
-      const updated =
-        action === "SUSPEND"
-          ? await adminHttpApi.suspendUser(user.id, suspendReason.trim())
-          : await adminHttpApi.reactivateUser(user.id);
+  const statusMutation = useMutation({
+    mutationFn: ({
+      user,
+      action,
+      reason,
+    }: {
+      user: AdminUserItem;
+      action: "SUSPEND" | "REACTIVATE";
+      reason?: string;
+    }) =>
+      action === "SUSPEND"
+        ? adminHttpApi.suspendUser(user.id, reason ?? "")
+        : adminHttpApi.reactivateUser(user.id),
+    onSuccess: (updated, { user, action }) => {
       const nextStatus =
         updated?.status ?? (action === "SUSPEND" ? "SUSPENDED" : "ACTIVE");
       setStatusOverrides((prev) => ({ ...prev, [user.id]: nextStatus }));
@@ -150,187 +143,205 @@ export function AdminUsersTable({
       );
       closeConfirmDialog();
       router.refresh();
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể cập nhật trạng thái người dùng"
       );
-    } finally {
-      setBusyId(null);
+    },
+  });
+
+  const busyId = statusMutation.isPending ? statusMutation.variables?.user.id ?? null : null;
+
+  function handleConfirm() {
+    if (!confirmTarget) return;
+    const { user, action } = confirmTarget;
+    if (action === "SUSPEND" && !suspendReason.trim()) {
+      toast.error("Vui lòng nhập lý do tạm ngưng tài khoản.");
+      return;
     }
+    statusMutation.mutate({
+      user,
+      action,
+      reason: suspendReason.trim(),
+    });
   }
+
+  const columns = React.useMemo<DataTableColumn<AdminUserItem>[]>(
+    () => [
+      {
+        accessorKey: "fullName",
+        header: "Họ tên",
+        cell: ({ row }) => {
+          const u = row.original;
+          return (
+            <button
+              type="button"
+              onClick={() => setInspectedUser(u)}
+              className="text-left font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors cursor-pointer"
+            >
+              {u.fullName}
+            </button>
+          );
+        },
+      },
+      {
+        accessorKey: "email",
+        header: "Email",
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">{row.original.email}</span>
+        ),
+      },
+      {
+        accessorKey: "role",
+        header: "Vai trò",
+        cell: ({ row }) => (
+          <Badge variant="outline">
+            {ROLE_LABELS[row.original.role] ?? row.original.role}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Ngày tạo",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {formatDate(row.original.createdAt)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const u = row.original;
+          const isSuspended = u.status === "SUSPENDED";
+          return (
+            <div className="text-right">
+              <RowActionsMenu
+                ariaLabel={`Mở menu thao tác cho ${u.email}`}
+                disabled={busyId === u.id}
+                groups={[
+                  {
+                    id: "inspect",
+                    items: [
+                      {
+                        id: "view",
+                        label: "Xem chi tiết tài khoản",
+                        icon: Eye,
+                        onSelect: () => setInspectedUser(u),
+                      },
+                    ],
+                  },
+                  {
+                    id: "account-status",
+                    items: [
+                      {
+                        id: "reactivate",
+                        label: "Kích hoạt lại tài khoản",
+                        icon: CheckCircle2,
+                        hidden: !isSuspended,
+                        onSelect: () =>
+                          setConfirmTarget({
+                            user: u,
+                            action: "REACTIVATE",
+                          }),
+                      },
+                      {
+                        id: "suspend",
+                        label: "Tạm ngưng tài khoản",
+                        icon: PauseCircle,
+                        destructive: true,
+                        hidden: isSuspended,
+                        onSelect: () =>
+                          setConfirmTarget({
+                            user: u,
+                            action: "SUSPEND",
+                          }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+          );
+        },
+      },
+    ],
+    [busyId]
+  );
 
   return (
     <>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo tên hoặc email..."
-            className="pl-9"
-            aria-label="Tìm kiếm người dùng"
-          />
-        </div>
+      <DataTable
+        serverSide
+        data={users}
+        columns={columns}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Tìm theo tên hoặc email..."
+        searchAriaLabel="Tìm kiếm người dùng"
+        emptyMessage="Không tìm thấy người dùng phù hợp với bộ lọc hiện tại."
+        toolbarSlot={
+          <>
+            <div className="w-40">
+              <NativeSelect
+                aria-label="Lọc theo vai trò"
+                value={initialRole}
+                onChange={(e) =>
+                  navigateWithParams({ role: e.target.value as RoleFilter })
+                }
+                className="text-xs font-medium"
+              >
+                <NativeSelectOption value="ALL">Tất cả vai trò</NativeSelectOption>
+                <NativeSelectOption value="ORGANIZATION">Tổ chức đối tác</NativeSelectOption>
+                <NativeSelectOption value="TECHNICIAN">Kỹ thuật viên</NativeSelectOption>
+                <NativeSelectOption value="CUSTOMER">Khách hàng</NativeSelectOption>
+              </NativeSelect>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="w-40">
-            <NativeSelect
-              aria-label="Lọc theo vai trò"
-              value={initialRole}
-              onChange={(e) =>
-                navigateWithParams({ role: e.target.value as RoleFilter })
-              }
-              className="text-xs font-medium"
-            >
-              <NativeSelectOption value="ALL">Tất cả vai trò</NativeSelectOption>
-              <NativeSelectOption value="ORGANIZATION">Tổ chức đối tác</NativeSelectOption>
-              <NativeSelectOption value="TECHNICIAN">Kỹ thuật viên</NativeSelectOption>
-              <NativeSelectOption value="CUSTOMER">Khách hàng</NativeSelectOption>
-            </NativeSelect>
-          </div>
+            <div className="w-40">
+              <NativeSelect
+                aria-label="Lọc theo trạng thái"
+                value={initialStatus}
+                onChange={(e) =>
+                  navigateWithParams({ status: e.target.value as StatusFilter })
+                }
+                className="text-xs font-medium"
+              >
+                <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
+                <NativeSelectOption value="ACTIVE">Hoạt động</NativeSelectOption>
+                <NativeSelectOption value="SUSPENDED">Tạm ngưng</NativeSelectOption>
+              </NativeSelect>
+            </div>
 
-          <div className="w-40">
-            <NativeSelect
-              aria-label="Lọc theo trạng thái"
-              value={initialStatus}
-              onChange={(e) =>
-                navigateWithParams({ status: e.target.value as StatusFilter })
-              }
-              className="text-xs font-medium"
-            >
-              <NativeSelectOption value="ALL">Tất cả trạng thái</NativeSelectOption>
-              <NativeSelectOption value="ACTIVE">Hoạt động</NativeSelectOption>
-              <NativeSelectOption value="SUSPENDED">Tạm ngưng</NativeSelectOption>
-            </NativeSelect>
-          </div>
-
-          <div className="w-44">
-            <NativeSelect
-              aria-label="Sắp xếp người dùng"
-              value={sortValue}
-              onChange={(e) => {
-                const [nextSortBy, nextSortDir] = e.target.value.split(":");
-                navigateWithParams({
-                  sortBy: nextSortBy,
-                  sortDir: nextSortDir === "asc" ? "asc" : "desc",
-                });
-              }}
-              className="text-xs font-medium"
-            >
-              <NativeSelectOption value="createdAt:desc">Mới tạo nhất</NativeSelectOption>
-              <NativeSelectOption value="createdAt:asc">Tạo cũ nhất</NativeSelectOption>
-              <NativeSelectOption value="fullName:asc">Họ tên (A → Z)</NativeSelectOption>
-              <NativeSelectOption value="email:asc">Email (A → Z)</NativeSelectOption>
-            </NativeSelect>
-          </div>
-        </div>
-      </div>
-
-      <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Họ tên</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Vai trò</TableHead>
-              <TableHead>Ngày tạo</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="py-8 text-center text-sm text-muted-foreground"
-                >
-                  Không tìm thấy người dùng phù hợp với bộ lọc hiện tại.
-                </TableCell>
-              </TableRow>
-            ) : (
-              users.map((u) => {
-                const isSuspended = u.status === "SUSPENDED";
-                return (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">
-                      <button
-                        type="button"
-                        onClick={() => setInspectedUser(u)}
-                        className="text-left font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors cursor-pointer"
-                      >
-                        {u.fullName}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {u.email}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {ROLE_LABELS[u.role] ?? u.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      {formatDate(u.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={u.status} />
-                    </TableCell>
-                    <TableCell className="w-[1%] whitespace-nowrap text-right">
-                      <RowActionsMenu
-                        ariaLabel={`Mở menu thao tác cho ${u.email}`}
-                        disabled={busyId === u.id}
-                        groups={[
-                          {
-                            id: "inspect",
-                            items: [
-                              {
-                                id: "view",
-                                label: "Xem chi tiết tài khoản",
-                                icon: Eye,
-                                onSelect: () => setInspectedUser(u),
-                              },
-                            ],
-                          },
-                          {
-                            id: "account-status",
-                            items: [
-                              {
-                                id: "reactivate",
-                                label: "Kích hoạt lại tài khoản",
-                                icon: CheckCircle2,
-                                hidden: !isSuspended,
-                                onSelect: () =>
-                                  setConfirmTarget({
-                                    user: u,
-                                    action: "REACTIVATE",
-                                  }),
-                              },
-                              {
-                                id: "suspend",
-                                label: "Tạm ngưng tài khoản",
-                                icon: PauseCircle,
-                                destructive: true,
-                                hidden: isSuspended,
-                                onSelect: () =>
-                                  setConfirmTarget({
-                                    user: u,
-                                    action: "SUSPEND",
-                                  }),
-                              },
-                            ],
-                          },
-                        ]}
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+            <div className="w-44">
+              <NativeSelect
+                aria-label="Sắp xếp người dùng"
+                value={sortValue}
+                onChange={(e) => {
+                  const [nextSortBy, nextSortDir] = e.target.value.split(":");
+                  navigateWithParams({
+                    sortBy: nextSortBy,
+                    sortDir: nextSortDir === "asc" ? "asc" : "desc",
+                  });
+                }}
+                className="text-xs font-medium"
+              >
+                <NativeSelectOption value="createdAt:desc">Mới tạo nhất</NativeSelectOption>
+                <NativeSelectOption value="createdAt:asc">Tạo cũ nhất</NativeSelectOption>
+                <NativeSelectOption value="fullName:asc">Họ tên (A → Z)</NativeSelectOption>
+                <NativeSelectOption value="email:asc">Email (A → Z)</NativeSelectOption>
+              </NativeSelect>
+            </div>
+          </>
+        }
+      />
 
       <ContextInspector
         open={Boolean(inspectedUser)}

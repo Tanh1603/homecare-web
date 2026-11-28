@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -8,22 +9,19 @@ import {
   type HouseholdWarrantyItem,
   type WarrantyClaimItem,
 } from "../api/warranties.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate, formatShortId } from "@/shared/lib/utils";
+
+const ADMIN_WARRANTIES_KEY = ["admin", "warranties"] as const;
+const ADMIN_CLAIMS_KEY = ["admin", "warranty-claims"] as const;
 
 export function AdminWarrantiesPanel({
   initialWarranties,
@@ -34,87 +32,272 @@ export function AdminWarrantiesPanel({
   initialClaims: WarrantyClaimItem[];
   initialError?: string | null;
 }) {
-  const [tab, setTab] = React.useState<"WARRANTIES" | "CLAIMS">("WARRANTIES");
-  const [warranties, setWarranties] = React.useState<HouseholdWarrantyItem[]>(initialWarranties);
-  const [claims, setClaims] = React.useState<WarrantyClaimItem[]>(initialClaims);
-  const [loadError, setLoadError] = React.useState<string | null>(initialError);
-  const [reloading, setReloading] = React.useState(false);
+  const queryClient = useQueryClient();
+  const tab = useUiStore((s) => s.adminWarrantiesActiveTab);
+  const setTab = useUiStore((s) => s.setAdminWarrantiesActiveTab);
 
-  const [verifyWarrantyTarget, setVerifyWarrantyTarget] = React.useState<HouseholdWarrantyItem | null>(null);
-  const [verifyClaimTarget, setVerifyClaimTarget] = React.useState<WarrantyClaimItem | null>(null);
+  const [verifyWarrantyTarget, setVerifyWarrantyTarget] =
+    React.useState<HouseholdWarrantyItem | null>(null);
+  const [verifyClaimTarget, setVerifyClaimTarget] =
+    React.useState<WarrantyClaimItem | null>(null);
   const [decision, setDecision] = React.useState<"VERIFIED" | "REJECTED">("VERIFIED");
   const [note, setNote] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
+
+  const warrantiesQuery = useQuery({
+    queryKey: ADMIN_WARRANTIES_KEY,
+    queryFn: () => warrantiesHttpApi.adminListWarranties(),
+    initialData: initialWarranties,
+    enabled: false,
+  });
+
+  const claimsQuery = useQuery({
+    queryKey: ADMIN_CLAIMS_KEY,
+    queryFn: () => warrantiesHttpApi.adminListClaims(),
+    initialData: initialClaims,
+    enabled: false,
+  });
+
+  const verifyWarrantyMutation = useMutation({
+    mutationFn: (vars: {
+      warrantyId: string;
+      verificationStatus: "VERIFIED" | "REJECTED";
+      note?: string;
+      version?: number;
+    }) =>
+      warrantiesHttpApi.adminVerifyWarranty(
+        vars.warrantyId,
+        { verificationStatus: vars.verificationStatus, note: vars.note },
+        vars.version
+      ),
+    onSuccess: (updated, vars) => {
+      queryClient.setQueryData<HouseholdWarrantyItem[]>(
+        ADMIN_WARRANTIES_KEY,
+        (prev = []) => prev.map((w) => (w.id === updated.id ? updated : w))
+      );
+      toast.success(
+        vars.verificationStatus === "VERIFIED"
+          ? "Đã xác minh bảo hành hãng (D-14)"
+          : "Đã từ chối xác minh"
+      );
+      setVerifyWarrantyTarget(null);
+      setNote("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Xác minh thất bại");
+    },
+  });
+
+  const verifyClaimMutation = useMutation({
+    mutationFn: (vars: {
+      claimId: string;
+      decision: "VERIFIED" | "REJECTED";
+      note?: string;
+      version?: number;
+    }) =>
+      warrantiesHttpApi.adminVerifyClaim(
+        vars.claimId,
+        {
+          warrantyVerificationStatus: vars.decision,
+          authorizationVerificationStatus: vars.decision,
+          note: vars.note,
+        },
+        vars.version
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<WarrantyClaimItem[]>(ADMIN_CLAIMS_KEY, (prev = []) =>
+        prev.map((c) => (c.id === updated.id ? updated : c))
+      );
+      toast.success("Đã cập nhật kết quả xác minh claim (D-14)");
+      setVerifyClaimTarget(null);
+      setNote("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Xác minh thất bại");
+    },
+  });
+
+  const warranties = warrantiesQuery.data ?? [];
+  const claims = claimsQuery.data ?? [];
+  const reloading = warrantiesQuery.isFetching || claimsQuery.isFetching;
+  const saving = verifyWarrantyMutation.isPending || verifyClaimMutation.isPending;
+  const loadError =
+    initialError ??
+    (warrantiesQuery.error instanceof Error
+      ? warrantiesQuery.error.message
+      : claimsQuery.error instanceof Error
+        ? claimsQuery.error.message
+        : null);
+
+  const warrantyColumns = React.useMemo<DataTableColumn<HouseholdWarrantyItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã BH",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{formatShortId(row.original.id)}</span>
+        ),
+      },
+      {
+        accessorKey: "providerName",
+        header: "Đơn vị / Hãng",
+      },
+      {
+        accessorKey: "warrantyCategory",
+        header: "Phân loại",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.warrantyCategory ?? "PRODUCT_MANUFACTURER"} /{" "}
+            {row.original.warrantyIssuer ?? "MANUFACTURER"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "verificationStatus",
+        header: "Xác minh (D-14)",
+        cell: ({ row }) => (
+          <StatusBadge status={row.original.verificationStatus ?? "UNVERIFIED"} />
+        ),
+      },
+      {
+        accessorKey: "endsOn",
+        header: "Hạn BH",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.endsOn ? formatDate(row.original.endsOn) : "—"}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const w = row.original;
+          return (
+            <div className="text-right">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setVerifyWarrantyTarget(w);
+                  setDecision("VERIFIED");
+                  setNote("");
+                }}
+              >
+                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                Xác minh
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const claimColumns = React.useMemo<DataTableColumn<WarrantyClaimItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã Claim",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{formatShortId(row.original.id)}</span>
+        ),
+      },
+      {
+        accessorKey: "warrantyCategory",
+        header: "Loại / Issuer",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.warrantyCategory} ({row.original.warrantyIssuer})
+          </span>
+        ),
+      },
+      {
+        accessorKey: "claimStatus",
+        header: "Trạng thái xử lý",
+        cell: ({ row }) => <StatusBadge status={row.original.claimStatus} />,
+      },
+      {
+        accessorKey: "warrantyVerificationStatus",
+        header: "Xác minh BH / Ủy quyền",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.warrantyVerificationStatus} /{" "}
+            {row.original.authorizationVerificationStatus}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "providerNoResponse",
+        header: "SLA 48h",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.providerNoResponse ? (
+              <span className="font-medium text-warning">Quá hạn 48h</span>
+            ) : (
+              "—"
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const c = row.original;
+          return (
+            <div className="text-right">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setVerifyClaimTarget(c);
+                  setDecision("VERIFIED");
+                  setNote("");
+                }}
+              >
+                Xác minh
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
 
   async function handleReload() {
-    setReloading(true);
-    setLoadError(null);
-    try {
-      const [nextW, nextC] = await Promise.all([
-        warrantiesHttpApi.adminListWarranties(),
-        warrantiesHttpApi.adminListClaims(),
-      ]);
-      setWarranties(nextW);
-      setClaims(nextC);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Không thể tải dữ liệu bảo hành.");
-    } finally {
-      setReloading(false);
-    }
+    await Promise.all([warrantiesQuery.refetch(), claimsQuery.refetch()]);
   }
 
-  async function handleVerifyWarrantySubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleVerifyWarrantySubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!verifyWarrantyTarget) return;
     if (decision === "REJECTED" && !note.trim()) {
       toast.error("Vui lòng nhập lý do từ chối xác minh.");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await warrantiesHttpApi.adminVerifyWarranty(
-        verifyWarrantyTarget.id,
-        { verificationStatus: decision, note: note.trim() || undefined },
-        verifyWarrantyTarget.version
-      );
-      setWarranties((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
-      toast.success(decision === "VERIFIED" ? "Đã xác minh bảo hành hãng (D-14)" : "Đã từ chối xác minh");
-      setVerifyWarrantyTarget(null);
-      setNote("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Xác minh thất bại");
-    } finally {
-      setSaving(false);
-    }
+    verifyWarrantyMutation.mutate({
+      warrantyId: verifyWarrantyTarget.id,
+      verificationStatus: decision,
+      note: note.trim() || undefined,
+      version: verifyWarrantyTarget.version,
+    });
   }
 
-  async function handleVerifyClaimSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleVerifyClaimSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!verifyClaimTarget) return;
     if (decision === "REJECTED" && !note.trim()) {
       toast.error("Vui lòng nhập lý do từ chối xác minh.");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await warrantiesHttpApi.adminVerifyClaim(
-        verifyClaimTarget.id,
-        {
-          warrantyVerificationStatus: decision,
-          authorizationVerificationStatus: decision,
-          note: note.trim() || undefined,
-        },
-        verifyClaimTarget.version
-      );
-      setClaims((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      toast.success("Đã cập nhật kết quả xác minh claim (D-14)");
-      setVerifyClaimTarget(null);
-      setNote("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Xác minh thất bại");
-    } finally {
-      setSaving(false);
-    }
+    verifyClaimMutation.mutate({
+      claimId: verifyClaimTarget.id,
+      decision,
+      note: note.trim() || undefined,
+      version: verifyClaimTarget.version,
+    });
   }
 
   return (
@@ -144,7 +327,7 @@ export function AdminWarrantiesPanel({
             Yêu cầu bảo hành / SLA ({claims.length})
           </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={handleReload} disabled={reloading}>
+        <Button variant="outline" size="sm" onClick={() => void handleReload()} disabled={reloading}>
           <RefreshCw className={`mr-1.5 h-4 w-4 ${reloading ? "animate-spin" : ""}`} />
           Làm mới
         </Button>
@@ -158,51 +341,12 @@ export function AdminWarrantiesPanel({
             description="Bảo hành sản phẩm/hãng mới sẽ hiển thị tại đây để Admin xác minh theo D-14."
           />
         ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mã BH</TableHead>
-                    <TableHead>Đơn vị / Hãng</TableHead>
-                    <TableHead>Phân loại</TableHead>
-                    <TableHead>Xác minh (D-14)</TableHead>
-                    <TableHead>Hạn BH</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {warranties.map((w) => (
-                    <TableRow key={w.id}>
-                      <TableCell className="font-mono text-xs">{formatShortId(w.id)}</TableCell>
-                      <TableCell>{w.providerName}</TableCell>
-                      <TableCell className="text-xs">
-                        {w.warrantyCategory ?? "PRODUCT_MANUFACTURER"} / {w.warrantyIssuer ?? "MANUFACTURER"}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={w.verificationStatus ?? "UNVERIFIED"} />
-                      </TableCell>
-                      <TableCell className="text-xs">{w.endsOn ? formatDate(w.endsOn) : "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setVerifyWarrantyTarget(w);
-                            setDecision("VERIFIED");
-                            setNote("");
-                          }}
-                        >
-                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                          Xác minh
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
+          <DataTable
+            hideSearch
+            serverSide
+            data={warranties}
+            columns={warrantyColumns}
+          />
         )
       ) : claims.length === 0 ? (
         <EmptyState
@@ -211,58 +355,12 @@ export function AdminWarrantiesPanel({
           description="WarrantyClaim quá hạn SLA 48h hoặc chờ xác minh hãng sẽ hiển thị tại đây."
         />
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã Claim</TableHead>
-                  <TableHead>Loại / Issuer</TableHead>
-                  <TableHead>Trạng thái xử lý</TableHead>
-                  <TableHead>Xác minh BH / Ủy quyền</TableHead>
-                  <TableHead>SLA 48h</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {claims.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-mono text-xs">{formatShortId(c.id)}</TableCell>
-                    <TableCell className="text-xs">
-                      {c.warrantyCategory} ({c.warrantyIssuer})
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={c.claimStatus} />
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {c.warrantyVerificationStatus} / {c.authorizationVerificationStatus}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {c.providerNoResponse ? (
-                        <span className="font-medium text-warning">Quá hạn 48h</span>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setVerifyClaimTarget(c);
-                          setDecision("VERIFIED");
-                          setNote("");
-                        }}
-                      >
-                        Xác minh
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+        <DataTable
+          hideSearch
+          serverSide
+          data={claims}
+          columns={claimColumns}
+        />
       )}
 
       <FormDrawer

@@ -1,7 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AdminReviewsPanel } from "../components/admin-reviews-panel";
 import { reviewsHttpApi } from "../api/reviews.http";
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 describe("AdminReviewsPanel", () => {
   beforeEach(() => {
@@ -31,7 +42,7 @@ describe("AdminReviewsPanel", () => {
       snapshots: [],
     });
 
-    render(
+    renderWithQueryClient(
       <AdminReviewsPanel
         initialItems={[
           {

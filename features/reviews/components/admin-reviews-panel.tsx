@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,20 +16,22 @@ import { reviewsHttpApi, type AdminReviewItem } from "../api/reviews.http";
 import type { PaginationMeta } from "@/shared/api/api-envelope";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate, formatShortId } from "@/shared/lib/utils";
+
+interface ReviewFilterQuery {
+  status: string;
+  rating: number | null;
+  providerId?: string;
+  q?: string;
+  page: number;
+  size: number;
+}
 
 export function AdminReviewsPanel({
   initialItems,
@@ -39,113 +42,305 @@ export function AdminReviewsPanel({
   initialPagination: PaginationMeta;
   initialError?: string | null;
 }) {
-  const [items, setItems] = React.useState<AdminReviewItem[]>(initialItems);
-  const [pagination, setPagination] = React.useState<PaginationMeta>(initialPagination);
-  const [loadError, setLoadError] = React.useState<string | null>(initialError);
-  const [loading, setLoading] = React.useState(false);
-  const [resyncing, setResyncing] = React.useState(false);
+  const queryClient = useQueryClient();
 
   const [statusFilter, setStatusFilter] = React.useState("ALL");
   const [ratingFilter, setRatingFilter] = React.useState("");
   const [providerFilter, setProviderFilter] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
 
+  const [appliedFilters, setAppliedFilters] = React.useState<ReviewFilterQuery>({
+    status: "ALL",
+    rating: null,
+    providerId: undefined,
+    q: undefined,
+    page: 1,
+    size: initialPagination.size || 20,
+  });
+
   const [hideTarget, setHideTarget] = React.useState<AdminReviewItem | null>(null);
   const [hideReason, setHideReason] = React.useState("");
   const [restoreTarget, setRestoreTarget] = React.useState<AdminReviewItem | null>(null);
   const [restoreNote, setRestoreNote] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
 
-  async function fetchReviews(page = 1) {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const next = await reviewsHttpApi.adminListServiceReviews({
-        status: statusFilter,
-        rating: ratingFilter ? Number(ratingFilter) : null,
-        providerId: providerFilter.trim() || undefined,
-        q: searchQuery.trim() || undefined,
-        page,
-        size: pagination.size || 20,
-      });
-      setItems(next.items);
-      setPagination(next.pagination);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Không thể tải danh sách đánh giá.");
-    } finally {
-      setLoading(false);
-    }
+  const isDefaultInitialQuery =
+    appliedFilters.status === "ALL" &&
+    appliedFilters.rating === null &&
+    !appliedFilters.providerId &&
+    !appliedFilters.q &&
+    appliedFilters.page === 1;
+
+  const reviewsQuery = useQuery({
+    queryKey: ["admin-service-reviews", appliedFilters],
+    queryFn: () => reviewsHttpApi.adminListServiceReviews(appliedFilters),
+    initialData:
+      isDefaultInitialQuery && !initialError
+        ? { items: initialItems, pagination: initialPagination }
+        : undefined,
+    staleTime: 30_000,
+  });
+
+  const items = reviewsQuery.data?.items ?? initialItems;
+  const pagination = reviewsQuery.data?.pagination ?? initialPagination;
+  const loadError =
+    reviewsQuery.error instanceof Error
+      ? reviewsQuery.error.message
+      : isDefaultInitialQuery
+        ? initialError
+        : null;
+
+  const hideMutation = useMutation({
+    mutationFn: (payload: { reviewId: string; reason: string; version?: number }) =>
+      reviewsHttpApi.adminHideServiceReview(
+        payload.reviewId,
+        payload.reason,
+        payload.version
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<{ items: AdminReviewItem[]; pagination: PaginationMeta }>(
+        ["admin-service-reviews", appliedFilters],
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                items: prev.items.map((r) => (r.id === updated.id ? updated : r)),
+              }
+            : prev
+      );
+      void queryClient.invalidateQueries({ queryKey: ["admin-service-reviews"] });
+      toast.success("Đã ẩn đánh giá và đồng bộ lại điểm Provider.");
+      setHideTarget(null);
+      setHideReason("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Không thể ẩn đánh giá.");
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (payload: { reviewId: string; note?: string; version?: number }) =>
+      reviewsHttpApi.adminRestoreServiceReview(
+        payload.reviewId,
+        payload.note,
+        payload.version
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<{ items: AdminReviewItem[]; pagination: PaginationMeta }>(
+        ["admin-service-reviews", appliedFilters],
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                items: prev.items.map((r) => (r.id === updated.id ? updated : r)),
+              }
+            : prev
+      );
+      void queryClient.invalidateQueries({ queryKey: ["admin-service-reviews"] });
+      toast.success("Đã khôi phục đánh giá và đồng bộ lại điểm Provider.");
+      setRestoreTarget(null);
+      setRestoreNote("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Không thể khôi phục đánh giá.");
+    },
+  });
+
+  const resyncMutation = useMutation({
+    mutationFn: (providerId?: string) => reviewsHttpApi.adminResyncRating(providerId),
+    onSuccess: (result) => {
+      toast.success(`Đã phát tín hiệu đồng bộ cho ${result.resyncedProviders} đối tác.`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Đồng bộ điểm thất bại.");
+    },
+  });
+
+  function applyFilters(page = 1) {
+    setAppliedFilters({
+      status: statusFilter,
+      rating: ratingFilter ? Number(ratingFilter) : null,
+      providerId: providerFilter.trim() || undefined,
+      q: searchQuery.trim() || undefined,
+      page,
+      size: pagination.size || 20,
+    });
   }
 
   function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void fetchReviews(1);
+    applyFilters(1);
   }
 
-  async function handleHideSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleHideSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!hideTarget) return;
     if (hideReason.trim().length < 5) {
       toast.error("Vui lòng nhập lý do ẩn tối thiểu 5 ký tự.");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await reviewsHttpApi.adminHideServiceReview(
-        hideTarget.id,
-        hideReason.trim(),
-        hideTarget.version
-      );
-      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      toast.success("Đã ẩn đánh giá và đồng bộ lại điểm Provider.");
-      setHideTarget(null);
-      setHideReason("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể ẩn đánh giá.");
-    } finally {
-      setSaving(false);
-    }
+    hideMutation.mutate({
+      reviewId: hideTarget.id,
+      reason: hideReason.trim(),
+      version: hideTarget.version,
+    });
   }
 
-  async function handleRestoreSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleRestoreSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!restoreTarget) return;
-    setSaving(true);
-    try {
-      const updated = await reviewsHttpApi.adminRestoreServiceReview(
-        restoreTarget.id,
-        restoreNote.trim() || undefined,
-        restoreTarget.version
-      );
-      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      toast.success("Đã khôi phục đánh giá và đồng bộ lại điểm Provider.");
-      setRestoreTarget(null);
-      setRestoreNote("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể khôi phục đánh giá.");
-    } finally {
-      setSaving(false);
-    }
+    restoreMutation.mutate({
+      reviewId: restoreTarget.id,
+      note: restoreNote.trim() || undefined,
+      version: restoreTarget.version,
+    });
   }
 
-  async function handleResync(providerId?: string) {
-    setResyncing(true);
-    try {
-      const result = await reviewsHttpApi.adminResyncRating(providerId);
-      toast.success(`Đã phát tín hiệu đồng bộ cho ${result.resyncedProviders} đối tác.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Đồng bộ điểm thất bại.");
-    } finally {
-      setResyncing(false);
-    }
-  }
+  const loading = reviewsQuery.isFetching;
+  const resyncing = resyncMutation.isPending;
+
+  const columns = React.useMemo<DataTableColumn<AdminReviewItem>[]>(
+    () => [
+      {
+        accessorKey: "bookingId",
+        header: "Booking / Provider",
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="font-mono text-xs tabular-nums">
+              <p>BK #{formatShortId(r.bookingId)}</p>
+              <p className="text-muted-foreground">PRV #{formatShortId(r.providerId)}</p>
+              <button
+                type="button"
+                className="mt-1 text-[11px] font-sans font-medium text-primary hover:underline"
+                disabled={resyncing}
+                onClick={() => resyncMutation.mutate(r.providerId)}
+              >
+                Đồng bộ Provider này
+              </button>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "comment",
+        header: "Khách hàng & Nội dung",
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="max-w-md text-xs whitespace-normal">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 font-semibold text-amber-600 tabular-nums">
+                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                  {r.rating}/5
+                </span>
+                <span className="font-medium">
+                  {r.authorName || formatShortId(r.authorProfileId)}
+                </span>
+                {r.editCount > 0 ? (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    Đã sửa ({r.editCount}/1)
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-foreground">{r.comment}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+                Gửi lúc {formatDate(r.createdAt)}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "hiddenReason",
+        header: "Nhật ký kiểm duyệt",
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="max-w-xs text-xs text-muted-foreground whitespace-normal">
+              {r.hiddenReason ? (
+                <div>
+                  <p className="font-medium text-foreground">
+                    Lý do ẩn: {r.hiddenReason}
+                  </p>
+                  <p className="tabular-nums">
+                    Ẩn bởi {formatShortId(r.hiddenBy ?? "")}{" "}
+                    {r.hiddenAt ? `· ${formatDate(r.hiddenAt)}` : ""}
+                  </p>
+                </div>
+              ) : null}
+              {r.restoredAt ? (
+                <p className="mt-1 text-emerald-700 tabular-nums">
+                  Khôi phục bởi {formatShortId(r.restoredBy ?? "")} ·{" "}
+                  {formatDate(r.restoredAt)}
+                  {r.restoreNote ? ` (${r.restoreNote})` : ""}
+                </p>
+              ) : null}
+              {!r.hiddenReason && !r.restoredAt ? "—" : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="text-right">
+              {r.status === "PUBLISHED" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setHideTarget(r);
+                    setHideReason("");
+                  }}
+                >
+                  <EyeOff className="h-3.5 w-3.5" />
+                  Ẩn đánh giá
+                </Button>
+              ) : r.status === "HIDDEN" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRestoreTarget(r);
+                    setRestoreNote("");
+                  }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Khôi phục
+                </Button>
+              ) : (
+                <span className="text-xs text-muted-foreground">Không khả dụng</span>
+              )}
+            </div>
+          );
+        },
+      },
+    ],
+    [resyncMutation, resyncing]
+  );
 
   return (
     <div className="space-y-4">
       {loadError ? (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/40 bg-destructive/5 p-4 text-sm">
           <span className="text-destructive">{loadError}</span>
-          <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void fetchReviews(pagination.page)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={loading}
+            onClick={() => void reviewsQuery.refetch()}
+          >
             <RefreshCw className="h-3.5 w-3.5" />
             Tải lại
           </Button>
@@ -193,7 +388,7 @@ export function AdminReviewsPanel({
               size="sm"
               variant="outline"
               disabled={resyncing}
-              onClick={() => void handleResync(providerFilter.trim() || undefined)}
+              onClick={() => resyncMutation.mutate(providerFilter.trim() || undefined)}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${resyncing ? "animate-spin" : ""}`} />
               Resync Rating
@@ -216,108 +411,14 @@ export function AdminReviewsPanel({
           description="Thử thay đổi bộ lọc trạng thái, số sao hoặc từ khóa tìm kiếm."
         />
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Booking / Provider</TableHead>
-                  <TableHead>Khách hàng &amp; Nội dung</TableHead>
-                  <TableHead>Nhật ký kiểm duyệt</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs tabular-nums">
-                      <p>BK #{formatShortId(r.bookingId)}</p>
-                      <p className="text-muted-foreground">PRV #{formatShortId(r.providerId)}</p>
-                      <button
-                        type="button"
-                        className="mt-1 text-[11px] font-sans font-medium text-primary hover:underline"
-                        disabled={resyncing}
-                        onClick={() => void handleResync(r.providerId)}
-                      >
-                        Đồng bộ Provider này
-                      </button>
-                    </TableCell>
-                    <TableCell className="max-w-md text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 font-semibold text-amber-600 tabular-nums">
-                          <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                          {r.rating}/5
-                        </span>
-                        <span className="font-medium">{r.authorName || formatShortId(r.authorProfileId)}</span>
-                        {r.editCount > 0 ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Đã sửa ({r.editCount}/1)
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap text-foreground">{r.comment}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                        Gửi lúc {formatDate(r.createdAt)}
-                      </p>
-                    </TableCell>
-                    <TableCell className="max-w-xs text-xs text-muted-foreground">
-                      {r.hiddenReason ? (
-                        <div>
-                          <p className="font-medium text-foreground">Lý do ẩn: {r.hiddenReason}</p>
-                          <p className="tabular-nums">
-                            Ẩn bởi {formatShortId(r.hiddenBy ?? "")} {r.hiddenAt ? `· ${formatDate(r.hiddenAt)}` : ""}
-                          </p>
-                        </div>
-                      ) : null}
-                      {r.restoredAt ? (
-                        <p className="mt-1 text-emerald-700 tabular-nums">
-                          Khôi phục bởi {formatShortId(r.restoredBy ?? "")} · {formatDate(r.restoredAt)}
-                          {r.restoreNote ? ` (${r.restoreNote})` : ""}
-                        </p>
-                      ) : null}
-                      {!r.hiddenReason && !r.restoredAt ? "—" : null}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-right">
-                      {r.status === "PUBLISHED" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setHideTarget(r);
-                            setHideReason("");
-                          }}
-                        >
-                          <EyeOff className="h-3.5 w-3.5" />
-                          Ẩn đánh giá
-                        </Button>
-                      ) : r.status === "HIDDEN" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setRestoreTarget(r);
-                            setRestoreNote("");
-                          }}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Khôi phục
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Không khả dụng</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
+        <div className="space-y-3">
+          <DataTable
+            hideSearch
+            serverSide
+            data={items}
+            columns={columns}
+          />
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
             <span className="tabular-nums">
               Trang {pagination.page} / {Math.max(1, pagination.totalPages)} · Tổng {pagination.totalItems} đánh giá
             </span>
@@ -327,7 +428,7 @@ export function AdminReviewsPanel({
                 size="sm"
                 variant="outline"
                 disabled={loading || pagination.page <= 1}
-                onClick={() => void fetchReviews(pagination.page - 1)}
+                onClick={() => applyFilters(pagination.page - 1)}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
                 Trước
@@ -337,14 +438,14 @@ export function AdminReviewsPanel({
                 size="sm"
                 variant="outline"
                 disabled={loading || pagination.page >= pagination.totalPages}
-                onClick={() => void fetchReviews(pagination.page + 1)}
+                onClick={() => applyFilters(pagination.page + 1)}
               >
                 Sau
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
       <FormDrawer
@@ -353,7 +454,7 @@ export function AdminReviewsPanel({
         title={`Ẩn đánh giá #${formatShortId(hideTarget?.id ?? "")}`}
         description="Đánh giá sẽ chuyển sang HIDDEN (không xóa vật lý), bị loại khỏi danh sách công khai và cập nhật lại điểm trung bình Provider (D-31)."
         isDirty={Boolean(hideReason.trim())}
-        saving={saving}
+        saving={hideMutation.isPending}
         submitLabel="Xác nhận ẩn"
         onSubmit={handleHideSubmit}
       >
@@ -375,7 +476,7 @@ export function AdminReviewsPanel({
         title={`Khôi phục đánh giá #${formatShortId(restoreTarget?.id ?? "")}`}
         description="Đưa đánh giá trở lại trạng thái PUBLISHED và đồng bộ lại điểm trung bình Provider."
         isDirty={Boolean(restoreNote.trim())}
-        saving={saving}
+        saving={restoreMutation.isPending}
         submitLabel="Khôi phục đánh giá"
         onSubmit={handleRestoreSubmit}
       >

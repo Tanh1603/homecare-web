@@ -18,6 +18,7 @@ import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { ProvinceSelect } from "@/shared/ui/province-select";
 import { Textarea } from "@/shared/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -29,7 +30,6 @@ export function OrgResubmitForm({
   organization: Organization;
 }) {
   const router = useRouter();
-  const [submitting, setSubmitting] = React.useState(false);
 
   const form = useForm<ResubmitOrganizationInput>({
     resolver: zodResolver(resubmitOrganizationSchema),
@@ -50,23 +50,24 @@ export function OrgResubmitForm({
     name: ["legalEntityType", "city", "identityEvidenceRefs"],
   });
 
-  async function onSubmit(values: ResubmitOrganizationInput) {
-    setSubmitting(true);
-    try {
-      await organizationsApi.resubmit(
-        organization.id,
-        values,
-        organization.version,
-      );
+  const resubmitMutation = useMutation({
+    mutationFn: (values: ResubmitOrganizationInput) =>
+      organizationsApi.resubmit(organization.id, values, organization.version),
+    onSuccess: () => {
       toast.success("Đã gửi lại hồ sơ tổ chức. Trạng thái chuyển về PENDING.");
       router.refresh();
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể gửi lại hồ sơ.",
       );
-    } finally {
-      setSubmitting(false);
-    }
+    },
+  });
+
+  const submitting = resubmitMutation.isPending;
+
+  function onSubmit(values: ResubmitOrganizationInput) {
+    resubmitMutation.mutate(values);
   }
 
   return (

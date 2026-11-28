@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BellOff,
@@ -19,22 +20,16 @@ import {
   type AdminNotificationFailedBookingDetail,
   type DisputeItem,
 } from "../api/disputes.http";
+import { useUiStore } from "@/shared/store/ui-store";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import { DataTable, type DataTableColumn } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { FormDrawer, FormField, FormSection } from "@/shared/ui/form-drawer";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { StatusBadge } from "@/shared/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/ui/table";
 import { formatDate, formatShortId } from "@/shared/lib/utils";
 
 const TERMINAL_STATUSES = new Set(["RESOLVED", "ESCALATED", "CLOSED"]);
@@ -48,16 +43,13 @@ export function AdminDisputesPanel({
   initialNotificationFailed?: AdminNotificationFailedBooking[];
   initialError?: string | null;
 }) {
-  const [activeTab, setActiveTab] = React.useState<"DISPUTES" | "NOTIFICATION_FAILED">("DISPUTES");
-  const [disputes, setDisputes] = React.useState<DisputeItem[]>(initialDisputes);
-  const [failedBookings, setFailedBookings] =
-    React.useState<AdminNotificationFailedBooking[]>(initialNotificationFailed);
+  const queryClient = useQueryClient();
+  const activeTab = useUiStore((s) => s.adminDisputesActiveTab);
+  const setActiveTab = useUiStore((s) => s.setAdminDisputesActiveTab);
+
   const [failedDetail, setFailedDetail] =
     React.useState<AdminNotificationFailedBookingDetail | null>(null);
   const [retryNote, setRetryNote] = React.useState("");
-  const [retryingBookingId, setRetryingBookingId] = React.useState<string | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(initialError);
-  const [reloading, setReloading] = React.useState(false);
 
   const [resolveTarget, setResolveTarget] = React.useState<DisputeItem | null>(null);
   const [proposeTarget, setProposeTarget] = React.useState<DisputeItem | null>(null);
@@ -65,9 +57,34 @@ export function AdminDisputesPanel({
   const [proposalOutcome, setProposalOutcome] = React.useState("MUTUAL_REWORK");
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [outcome, setOutcome] = React.useState<"RESOLVED" | "ESCALATED" | "CLOSED">("RESOLVED");
-  const [bookingAction, setBookingAction] = React.useState<"" | "ACCEPT" | "REWORK" | "CLOSE_UNRESOLVED">("");
+  const [bookingAction, setBookingAction] = React.useState<
+    "" | "ACCEPT" | "REWORK" | "CLOSE_UNRESOLVED"
+  >("");
   const [note, setNote] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
+
+  const disputesQuery = useQuery({
+    queryKey: ["admin-disputes"],
+    queryFn: () => disputesHttpApi.adminListDisputes(),
+    initialData: initialError ? undefined : initialDisputes,
+    staleTime: 30_000,
+  });
+
+  const failedBookingsQuery = useQuery({
+    queryKey: ["admin-notification-failed"],
+    queryFn: () => disputesHttpApi.adminListNotificationFailedBookings(),
+    initialData: initialNotificationFailed,
+    staleTime: 30_000,
+  });
+
+  const disputes = disputesQuery.data ?? initialDisputes;
+  const failedBookings = failedBookingsQuery.data ?? initialNotificationFailed;
+  const reloading = disputesQuery.isFetching || failedBookingsQuery.isFetching;
+  const loadError =
+    disputesQuery.error instanceof Error
+      ? disputesQuery.error.message
+      : failedBookingsQuery.error instanceof Error
+        ? failedBookingsQuery.error.message
+        : initialError;
 
   const visibleDisputes = React.useMemo(
     () =>
@@ -77,151 +94,447 @@ export function AdminDisputesPanel({
     [disputes, statusFilter]
   );
 
-  async function handleProposeSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function updateDisputeInCache(updated: DisputeItem) {
+    queryClient.setQueryData<DisputeItem[]>(["admin-disputes"], (prev) =>
+      (prev ?? initialDisputes).map((item) => (item.id === updated.id ? updated : item))
+    );
+    void queryClient.invalidateQueries({ queryKey: ["admin-disputes"] });
+  }
+
+  const proposeMutation = useMutation({
+    mutationFn: (payload: {
+      disputeId: string;
+      proposal: string;
+      outcome: string;
+      version?: number;
+    }) =>
+      disputesHttpApi.adminProposeResolution(
+        payload.disputeId,
+        { proposal: payload.proposal, outcome: payload.outcome },
+        payload.version
+      ),
+    onSuccess: (updated) => {
+      updateDisputeInCache(updated);
+      toast.success("Đã gửi đề xuất xử lý tranh chấp (SLA 7 ngày)");
+      setProposeTarget(null);
+      setProposalText("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Không thể gửi đề xuất");
+    },
+  });
+
+  const requestProviderMutation = useMutation({
+    mutationFn: (d: DisputeItem) =>
+      disputesHttpApi.adminRequestProviderResponse(d.id, d.version),
+    onSuccess: (updated) => {
+      updateDisputeInCache(updated);
+      toast.success("Đã gửi yêu cầu phản hồi tới đối tác (SLA 48 giờ)");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    },
+  });
+
+  const requestCustomerMutation = useMutation({
+    mutationFn: (d: DisputeItem) =>
+      disputesHttpApi.adminRequestCustomerEvidence(d.id, d.version),
+    onSuccess: (updated) => {
+      updateDisputeInCache(updated);
+      toast.success("Đã yêu cầu khách hàng bổ sung bằng chứng (SLA 7 ngày)");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (payload: {
+      disputeId: string;
+      outcome: "RESOLVED" | "ESCALATED" | "CLOSED";
+      bookingAction?: "ACCEPT" | "REWORK" | "CLOSE_UNRESOLVED";
+      note: string;
+      version?: number;
+    }) =>
+      disputesHttpApi.adminResolveDispute(
+        payload.disputeId,
+        {
+          outcome: payload.outcome,
+          bookingAction: payload.bookingAction,
+          note: payload.note,
+        },
+        payload.version
+      ),
+    onSuccess: (updated) => {
+      updateDisputeInCache(updated);
+      toast.success("Đã cập nhật kết quả xử lý tranh chấp");
+      setResolveTarget(null);
+      setNote("");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Không thể đóng tranh chấp");
+    },
+  });
+
+  const detailMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      disputesHttpApi.adminGetNotificationFailedBooking(bookingId),
+    onSuccess: (detail) => {
+      setFailedDetail(detail);
+      setRetryNote("");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể tải chi tiết booking lỗi."
+      );
+    },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: (payload: { bookingId: string; version?: number; note?: string }) =>
+      disputesHttpApi.adminRetryCompletionNotification(
+        payload.bookingId,
+        payload.version,
+        payload.note
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<AdminNotificationFailedBooking[]>(
+        ["admin-notification-failed"],
+        (prev) =>
+          (prev ?? initialNotificationFailed).map((item) =>
+            item.bookingId === updated.bookingId
+              ? {
+                  ...item,
+                  notificationRetryCount: updated.notificationRetryCount,
+                  lastNotificationRetryAt: updated.lastNotificationRetryAt,
+                  version: updated.version,
+                }
+              : item
+          )
+      );
+      void queryClient.invalidateQueries({ queryKey: ["admin-notification-failed"] });
+      if (failedDetail?.bookingId === updated.bookingId) {
+        setFailedDetail(updated);
+      }
+      setRetryNote("");
+      toast.success(
+        "Đã phát lại thông báo nghiệm thu; cảnh báo sẽ đóng khi xác nhận gửi thành công."
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Gửi lại thông báo thất bại.");
+    },
+  });
+
+  async function handleReload() {
+    await Promise.all([disputesQuery.refetch(), failedBookingsQuery.refetch()]);
+  }
+
+  function handleProposeSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!proposeTarget) return;
     if (!proposalText.trim()) {
       toast.error("Vui lòng nhập nội dung đề xuất xử lý.");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await disputesHttpApi.adminProposeResolution(
-        proposeTarget.id,
-        { proposal: proposalText.trim(), outcome: proposalOutcome },
-        proposeTarget.version
-      );
-      setDisputes((prev) =>
-        prev.map((item) => (item.id === proposeTarget.id ? updated : item))
-      );
-      toast.success("Đã gửi đề xuất xử lý tranh chấp (SLA 7 ngày)");
-      setProposeTarget(null);
-      setProposalText("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể gửi đề xuất");
-    } finally {
-      setSaving(false);
-    }
+    proposeMutation.mutate({
+      disputeId: proposeTarget.id,
+      proposal: proposalText.trim(),
+      outcome: proposalOutcome,
+      version: proposeTarget.version,
+    });
   }
 
-  async function handleReload() {
-    setReloading(true);
-    setLoadError(null);
-    try {
-      const [nextDisputes, nextFailed] = await Promise.all([
-        disputesHttpApi.adminListDisputes(),
-        disputesHttpApi.adminListNotificationFailedBookings(),
-      ]);
-      setDisputes(nextDisputes);
-      setFailedBookings(nextFailed);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Không thể tải dữ liệu.");
-    } finally {
-      setReloading(false);
-    }
-  }
-
-  async function handleOpenFailedDetail(bookingId: string) {
-    try {
-      const detail = await disputesHttpApi.adminGetNotificationFailedBooking(bookingId);
-      setFailedDetail(detail);
-      setRetryNote("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể tải chi tiết booking lỗi.");
-    }
-  }
-
-  async function handleRetryNotification(
-    bookingId: string,
-    version?: number,
-    customNote?: string
-  ) {
-    setRetryingBookingId(bookingId);
-    try {
-      const updated = await disputesHttpApi.adminRetryCompletionNotification(
-        bookingId,
-        version,
-        customNote
-      );
-      setFailedBookings((prev) =>
-        prev.map((item) =>
-          item.bookingId === bookingId
-            ? {
-                ...item,
-                notificationRetryCount: updated.notificationRetryCount,
-                lastNotificationRetryAt: updated.lastNotificationRetryAt,
-                version: updated.version,
-              }
-            : item
-        )
-      );
-      if (failedDetail?.bookingId === bookingId) {
-        setFailedDetail(updated);
-      }
-      setRetryNote("");
-      toast.success("Đã phát lại thông báo nghiệm thu; cảnh báo sẽ đóng khi xác nhận gửi thành công.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gửi lại thông báo thất bại.");
-    } finally {
-      setRetryingBookingId(null);
-    }
-  }
-
-  async function handleRequestProvider(d: DisputeItem) {
-    try {
-      const updated = await disputesHttpApi.adminRequestProviderResponse(d.id, d.version);
-      setDisputes((prev) => prev.map((item) => (item.id === d.id ? updated : item)));
-      toast.success("Đã gửi yêu cầu phản hồi tới đối tác (SLA 48 giờ)");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    }
-  }
-
-  async function handleRequestCustomer(d: DisputeItem) {
-    try {
-      const updated = await disputesHttpApi.adminRequestCustomerEvidence(d.id, d.version);
-      setDisputes((prev) => prev.map((item) => (item.id === d.id ? updated : item)));
-      toast.success("Đã yêu cầu khách hàng bổ sung bằng chứng (SLA 7 ngày)");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    }
-  }
-
-  async function handleResolveSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleResolveSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!resolveTarget) return;
     if (!note.trim()) {
       toast.error("Vui lòng nhập ghi chú kết luận xử lý (bắt buộc cho kiểm toán)");
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await disputesHttpApi.adminResolveDispute(
-        resolveTarget.id,
-        {
-          outcome,
-          bookingAction: bookingAction || undefined,
-          note: note.trim(),
-        },
-        resolveTarget.version
-      );
-      setDisputes((prev) => prev.map((item) => (item.id === resolveTarget.id ? updated : item)));
-      toast.success("Đã cập nhật kết quả xử lý tranh chấp");
-      setResolveTarget(null);
-      setNote("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể đóng tranh chấp");
-    } finally {
-      setSaving(false);
-    }
+    resolveMutation.mutate({
+      disputeId: resolveTarget.id,
+      outcome,
+      bookingAction: bookingAction || undefined,
+      note: note.trim(),
+      version: resolveTarget.version,
+    });
   }
+
+  const saving = proposeMutation.isPending || resolveMutation.isPending;
+  const retryingBookingId = retryMutation.isPending
+    ? retryMutation.variables?.bookingId ?? null
+    : null;
+
+  const failedBookingColumns = React.useMemo<
+    DataTableColumn<AdminNotificationFailedBooking>[]
+  >(
+    () => [
+      {
+        accessorKey: "bookingId",
+        header: "Booking / Provider",
+        cell: ({ row }) => {
+          const fb = row.original;
+          return (
+            <div className="font-mono text-xs tabular-nums">
+              <p>BK #{formatShortId(fb.bookingId)}</p>
+              <p className="text-muted-foreground">PRV #{formatShortId(fb.providerId)}</p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "serviceName",
+        header: "Dịch vụ & Lý do",
+        cell: ({ row }) => {
+          const fb = row.original;
+          return (
+            <div className="max-w-sm text-xs whitespace-normal">
+              <p className="font-medium">{fb.serviceName}</p>
+              <p className="text-muted-foreground">
+                {fb.adminReviewReason || "Chưa xác nhận gửi sau 24h"}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "completionSubmittedAt",
+        header: "Mốc gửi / Báo lỗi",
+        cell: ({ row }) => {
+          const fb = row.original;
+          return (
+            <div className="text-xs text-muted-foreground tabular-nums">
+              <p>
+                Hoàn thành:{" "}
+                {fb.completionSubmittedAt ? formatDate(fb.completionSubmittedAt) : "—"}
+              </p>
+              <p>
+                Báo lỗi:{" "}
+                {fb.notificationFailedAt ? formatDate(fb.notificationFailedAt) : "—"}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "notificationRetryCount",
+        header: "Retry",
+        cell: ({ row }) => {
+          const fb = row.original;
+          return (
+            <div className="text-xs tabular-nums">
+              <p>{fb.notificationRetryCount} lần</p>
+              {fb.lastNotificationRetryAt ? (
+                <p className="text-muted-foreground">
+                  {formatDate(fb.lastNotificationRetryAt)}
+                </p>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: "status",
+        header: "Trạng thái",
+        cell: () => <StatusBadge status="NOTIFICATION_FAILED" />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const fb = row.original;
+          return (
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => detailMutation.mutate(fb.bookingId)}
+              >
+                Chi tiết
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={retryingBookingId === fb.bookingId}
+                onClick={() =>
+                  retryMutation.mutate({ bookingId: fb.bookingId, version: fb.version })
+                }
+              >
+                <Send className="h-3.5 w-3.5" />
+                Retry Notification
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [detailMutation, retryMutation, retryingBookingId]
+  );
+
+  const disputeColumns = React.useMemo<DataTableColumn<DisputeItem>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "Mã TC / Booking",
+        cell: ({ row }) => {
+          const d = row.original;
+          return (
+            <div className="font-mono text-xs tabular-nums">
+              <p>#{formatShortId(d.id)}</p>
+              <p className="text-muted-foreground">BK #{formatShortId(d.bookingId)}</p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "category",
+        header: "Giai đoạn / Danh mục",
+        cell: ({ row }) => {
+          const d = row.original;
+          return (
+            <div className="text-xs">
+              <p className="font-medium">{d.category}</p>
+              <p className="text-muted-foreground">
+                {d.openedStage === "PRE_ACCEPTANCE" ? "Trước nghiệm thu" : "Sau nghiệm thu"}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "description",
+        header: "Nội dung & Bằng chứng",
+        cell: ({ row }) => {
+          const d = row.original;
+          return (
+            <div className="max-w-md text-xs whitespace-normal">
+              <p className="line-clamp-2 font-medium">{d.description}</p>
+              {d.providerResponse ? (
+                <p className="mt-1 line-clamp-1 text-muted-foreground">
+                  Đối tác: {d.providerResponse}
+                </p>
+              ) : d.providerNoResponse ? (
+                <p className="mt-1 font-medium text-warning">
+                  Đối tác không phản hồi trong 48h
+                </p>
+              ) : null}
+              {d.resolutionProposal ? (
+                <p className="mt-1 line-clamp-1 text-muted-foreground">
+                  Đề xuất: {d.resolutionProposal}
+                </p>
+              ) : null}
+              {d.evidence?.length ? (
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {d.evidence.map((ev, idx) =>
+                    ev.signedUrl ? (
+                      <a
+                        key={ev.id}
+                        href={ev.signedUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                      >
+                        Bằng chứng {idx + 1} ({ev.uploaderRole})
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : null
+                  )}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "slaDueAt",
+        header: "Hạn SLA",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {row.original.slaDueAt ? formatDate(row.original.slaDueAt) : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Trạng thái",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Thao tác</div>,
+        cell: ({ row }) => {
+          const d = row.original;
+          const isClosed = TERMINAL_STATUSES.has(d.status);
+          return (
+            <div className="text-right">
+              {isClosed ? (
+                <span className="text-xs text-muted-foreground">Đã đóng</span>
+              ) : (
+                <RowActionsMenu
+                  ariaLabel={`Thao tác tranh chấp #${formatShortId(d.id)}`}
+                  groups={[
+                    {
+                      id: "sla",
+                      items: [
+                        {
+                          id: "req-provider",
+                          label: "Yêu cầu đối tác phản hồi (48h)",
+                          icon: Clock,
+                          onSelect: () => requestProviderMutation.mutate(d),
+                        },
+                        {
+                          id: "req-customer",
+                          label: "Yêu cầu khách bổ sung bằng chứng (7d)",
+                          icon: AlertTriangle,
+                          onSelect: () => requestCustomerMutation.mutate(d),
+                        },
+                        {
+                          id: "propose",
+                          label: "Đề xuất hướng xử lý (7d)",
+                          icon: MessageSquareText,
+                          onSelect: () => {
+                            setProposeTarget(d);
+                            setProposalText(d.resolutionProposal ?? "");
+                            setProposalOutcome(d.resolutionOutcome ?? "MUTUAL_REWORK");
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      id: "resolve",
+                      items: [
+                        {
+                          id: "resolve",
+                          label: "Kết luận / Đóng tranh chấp",
+                          icon: CheckCircle2,
+                          onSelect: () => {
+                            setResolveTarget(d);
+                            setOutcome("RESOLVED");
+                            setBookingAction("");
+                            setNote("");
+                          },
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+            </div>
+          );
+        },
+      },
+    ],
+    [requestCustomerMutation, requestProviderMutation]
+  );
 
   return (
     <div className="space-y-4">
       {loadError ? (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/40 bg-destructive/5 p-4 text-sm">
           <span className="text-destructive">{loadError}</span>
-          <Button type="button" size="sm" variant="outline" disabled={reloading} onClick={handleReload}>
+          <Button type="button" size="sm" variant="outline" disabled={reloading} onClick={() => void handleReload()}>
             <RefreshCw className="h-3.5 w-3.5" />
             {reloading ? "Đang tải..." : "Tải lại"}
           </Button>
@@ -254,7 +567,7 @@ export function AdminDisputesPanel({
           size="sm"
           variant="outline"
           disabled={reloading}
-          onClick={handleReload}
+          onClick={() => void handleReload()}
         >
           <RefreshCw className="h-3.5 w-3.5" />
           {reloading ? "Đang tải..." : "Làm mới"}
@@ -269,70 +582,12 @@ export function AdminDisputesPanel({
             description="Các lịch hẹn chờ nghiệm thu quá 24h chưa xác nhận gửi thông báo (D-27) sẽ hiển thị tại đây để Admin kiểm tra và thử gửi lại."
           />
         ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Booking / Provider</TableHead>
-                    <TableHead>Dịch vụ &amp; Lý do</TableHead>
-                    <TableHead>Mốc gửi / Báo lỗi</TableHead>
-                    <TableHead>Retry</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {failedBookings.map((fb) => (
-                    <TableRow key={fb.bookingId}>
-                      <TableCell className="font-mono text-xs tabular-nums">
-                        <p>BK #{formatShortId(fb.bookingId)}</p>
-                        <p className="text-muted-foreground">PRV #{formatShortId(fb.providerId)}</p>
-                      </TableCell>
-                      <TableCell className="max-w-sm text-xs">
-                        <p className="font-medium">{fb.serviceName}</p>
-                        <p className="text-muted-foreground">{fb.adminReviewReason || "Chưa xác nhận gửi sau 24h"}</p>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        <p>Hoàn thành: {fb.completionSubmittedAt ? formatDate(fb.completionSubmittedAt) : "—"}</p>
-                        <p>Báo lỗi: {fb.notificationFailedAt ? formatDate(fb.notificationFailedAt) : "—"}</p>
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums">
-                        <p>{fb.notificationRetryCount} lần</p>
-                        {fb.lastNotificationRetryAt ? (
-                          <p className="text-muted-foreground">{formatDate(fb.lastNotificationRetryAt)}</p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status="NOTIFICATION_FAILED" />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void handleOpenFailedDetail(fb.bookingId)}
-                          >
-                            Chi tiết
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={retryingBookingId === fb.bookingId}
-                            onClick={() => void handleRetryNotification(fb.bookingId, fb.version)}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            Retry Notification
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
+          <DataTable
+            hideSearch
+            serverSide
+            data={failedBookings}
+            columns={failedBookingColumns}
+          />
         )
       ) : (
         <>
@@ -356,144 +611,20 @@ export function AdminDisputesPanel({
             ))}
           </div>
 
-      {visibleDisputes.length === 0 ? (
-        <EmptyState
-          icon={Scale}
-          title="Chưa có tranh chấp nào"
-          description="Khi khách hàng mở tranh chấp trước hoặc sau nghiệm thu, hồ sơ kèm bằng chứng và mốc SLA sẽ hiển thị tại đây."
-        />
-      ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã TC / Booking</TableHead>
-                  <TableHead>Giai đoạn / Danh mục</TableHead>
-                  <TableHead>Nội dung &amp; Bằng chứng</TableHead>
-                  <TableHead>Hạn SLA</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleDisputes.map((d) => {
-                  const isClosed = TERMINAL_STATUSES.has(d.status);
-                  return (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-mono text-xs tabular-nums">
-                        <p>#{formatShortId(d.id)}</p>
-                        <p className="text-muted-foreground">BK #{formatShortId(d.bookingId)}</p>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <p className="font-medium">{d.category}</p>
-                        <p className="text-muted-foreground">
-                          {d.openedStage === "PRE_ACCEPTANCE" ? "Trước nghiệm thu" : "Sau nghiệm thu"}
-                        </p>
-                      </TableCell>
-                      <TableCell className="max-w-md text-xs">
-                        <p className="line-clamp-2 font-medium">{d.description}</p>
-                        {d.providerResponse ? (
-                          <p className="mt-1 line-clamp-1 text-muted-foreground">
-                            Đối tác: {d.providerResponse}
-                          </p>
-                        ) : d.providerNoResponse ? (
-                          <p className="mt-1 font-medium text-warning">
-                            Đối tác không phản hồi trong 48h
-                          </p>
-                        ) : null}
-                        {d.resolutionProposal ? (
-                          <p className="mt-1 line-clamp-1 text-muted-foreground">
-                            Đề xuất: {d.resolutionProposal}
-                          </p>
-                        ) : null}
-                        {d.evidence?.length ? (
-                          <div className="mt-1.5 flex flex-wrap gap-2">
-                            {d.evidence.map((ev, idx) =>
-                              ev.signedUrl ? (
-                                <a
-                                  key={ev.id}
-                                  href={ev.signedUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-                                >
-                                  Bằng chứng {idx + 1} ({ev.uploaderRole})
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
-                              ) : null
-                            )}
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {d.slaDueAt ? formatDate(d.slaDueAt) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={d.status} />
-                      </TableCell>
-                      <TableCell className="w-[1%] whitespace-nowrap text-right">
-                        {isClosed ? (
-                          <span className="text-xs text-muted-foreground">Đã đóng</span>
-                        ) : (
-                          <RowActionsMenu
-                            ariaLabel={`Thao tác tranh chấp #${formatShortId(d.id)}`}
-                            groups={[
-                              {
-                                id: "sla",
-                                items: [
-                                  {
-                                    id: "req-provider",
-                                    label: "Yêu cầu đối tác phản hồi (48h)",
-                                    icon: Clock,
-                                    onSelect: () => handleRequestProvider(d),
-                                  },
-                                  {
-                                    id: "req-customer",
-                                    label: "Yêu cầu khách bổ sung bằng chứng (7d)",
-                                    icon: AlertTriangle,
-                                    onSelect: () => handleRequestCustomer(d),
-                                  },
-                                  {
-                                    id: "propose",
-                                    label: "Đề xuất hướng xử lý (7d)",
-                                    icon: MessageSquareText,
-                                    onSelect: () => {
-                                      setProposeTarget(d);
-                                      setProposalText(d.resolutionProposal ?? "");
-                                      setProposalOutcome(d.resolutionOutcome ?? "MUTUAL_REWORK");
-                                    },
-                                  },
-                                ],
-                              },
-                              {
-                                id: "resolve",
-                                items: [
-                                  {
-                                    id: "resolve",
-                                    label: "Kết luận / Đóng tranh chấp",
-                                    icon: CheckCircle2,
-                                    onSelect: () => {
-                                      setResolveTarget(d);
-                                      setOutcome("RESOLVED");
-                                      setBookingAction("");
-                                      setNote("");
-                                    },
-                                  },
-                                ],
-                              },
-                            ]}
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      )}
+          {visibleDisputes.length === 0 ? (
+            <EmptyState
+              icon={Scale}
+              title="Chưa có tranh chấp nào"
+              description="Khi khách hàng mở tranh chấp trước hoặc sau nghiệm thu, hồ sơ kèm bằng chứng và mốc SLA sẽ hiển thị tại đây."
+            />
+          ) : (
+            <DataTable
+              hideSearch
+              serverSide
+              data={visibleDisputes}
+              columns={disputeColumns}
+            />
+          )}
         </>
       )}
 
@@ -508,7 +639,11 @@ export function AdminDisputesPanel({
         onSubmit={(e) => {
           e.preventDefault();
           if (!failedDetail) return;
-          void handleRetryNotification(failedDetail.bookingId, failedDetail.version, retryNote);
+          retryMutation.mutate({
+            bookingId: failedDetail.bookingId,
+            version: failedDetail.version,
+            note: retryNote,
+          });
         }}
       >
         {failedDetail ? (

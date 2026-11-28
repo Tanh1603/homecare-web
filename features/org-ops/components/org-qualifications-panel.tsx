@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { unwrapApiResponse, type ApiResponse } from "@/shared/api/api-envelope";
+import {
+  orgOpsHttpApi,
+  type CategoryQualificationItem,
+} from "../api/org-ops.http";
 import {
   parseUploadedMediaRefs,
   serializeUploadedMediaRefs,
@@ -16,15 +20,7 @@ import { EvidenceDocumentsList } from "@/shared/ui/evidence-documents-list";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { FileUploader } from "@/shared/ui/file-uploader";
 
-export interface CategoryQualificationItem {
-  id: string;
-  providerId: string;
-  category: string;
-  status: "UNVERIFIED" | "VERIFIED" | "REJECTED" | "REVOKED";
-  evidenceRefs?: string | null;
-  reason?: string | null;
-  verifiedAt?: string | null;
-}
+export type { CategoryQualificationItem };
 
 const HIGH_RISK_CATEGORIES = [
   { code: "AC_REPAIR_INSTALL", label: "Sửa chữa & Lắp đặt máy lạnh" },
@@ -44,140 +40,119 @@ export function OrgQualificationsPanel({
 }: {
   organizationId: string;
 }) {
-  const [items, setItems] = React.useState<CategoryQualificationItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
-  const [submittingCategory, setSubmittingCategory] = React.useState<
-    string | null
-  >(null);
   const [removingKey, setRemovingKey] = React.useState<string | null>(null);
 
-  const loadQualifications = React.useCallback(async () => {
-    try {
-      setLoadError(null);
-      const res = await fetch("/api/gateway/providers/current/qualifications", {
-        cache: "no-store",
-        headers: { "X-Organization-Id": organizationId },
+  const queryKey = ["org", organizationId, "qualifications"] as const;
+
+  const qualificationsQuery = useQuery({
+    queryKey,
+    queryFn: () => orgOpsHttpApi.listCurrentQualifications(organizationId),
+  });
+
+  const upsertMutation = useMutation({
+    mutationFn: (vars: { category: string; evidenceRefs: string }) =>
+      orgOpsHttpApi.upsertCurrentQualification(
+        organizationId,
+        vars.category,
+        vars.evidenceRefs
+      ),
+    onSuccess: (updated, vars) => {
+      queryClient.setQueryData<CategoryQualificationItem[]>(queryKey, (prev = []) => {
+        const exists = prev.some((it) => it.category === vars.category);
+        return exists
+          ? prev.map((it) => (it.category === vars.category ? updated : it))
+          : [...prev, updated];
       });
-      const json = (await res.json()) as ApiResponse<CategoryQualificationItem[]>;
-      const list = unwrapApiResponse(json);
-      setItems(list);
-      const nextDrafts: Record<string, string> = {};
-      for (const q of list) {
-        nextDrafts[q.category] = q.evidenceRefs ?? "";
+      setDrafts((prev) => ({
+        ...prev,
+        [vars.category]: updated.evidenceRefs ?? vars.evidenceRefs,
+      }));
+      toast.success("Đã lưu và gửi chứng chỉ chuyên môn để Admin xét duyệt.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Không thể gửi chứng chỉ.");
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (vars: {
+      category: string;
+      objectKey: string;
+      remaining: ReturnType<typeof parseUploadedMediaRefs>;
+      nextSerialized: string;
+    }) => {
+      if (vars.remaining.length > 0) {
+        const updated = await orgOpsHttpApi.upsertCurrentQualification(
+          organizationId,
+          vars.category,
+          vars.nextSerialized
+        );
+        return { kind: "updated" as const, updated, vars };
       }
-      setDrafts(nextDrafts);
-    } catch (err) {
-      setLoadError(
-        err instanceof Error
-          ? err.message
-          : "Không thể tải danh sách chứng chỉ chuyên môn."
+      await orgOpsHttpApi.deleteCurrentQualification(organizationId, vars.category);
+      return { kind: "deleted" as const, vars };
+    },
+    onSuccess: (result) => {
+      const { vars } = result;
+      if (result.kind === "updated") {
+        queryClient.setQueryData<CategoryQualificationItem[]>(queryKey, (prev = []) =>
+          prev.map((it) => (it.category === vars.category ? result.updated : it))
+        );
+        setDrafts((prev) => ({
+          ...prev,
+          [vars.category]: result.updated.evidenceRefs ?? vars.nextSerialized,
+        }));
+        toast.success("Đã lưu và gửi chứng chỉ chuyên môn để Admin xét duyệt.");
+      } else {
+        queryClient.setQueryData<CategoryQualificationItem[]>(queryKey, (prev = []) =>
+          prev.filter((it) => it.category !== vars.category)
+        );
+        setDrafts((prev) => ({ ...prev, [vars.category]: "" }));
+        toast.success("Đã xóa chứng chỉ khỏi danh mục.");
+      }
+
+      if (!/^https?:\/\//i.test(vars.objectKey)) {
+        void orgOpsHttpApi
+          .deleteOrganizationEvidence(organizationId, vars.objectKey)
+          .catch(() => {});
+      }
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xóa tệp chứng chỉ."
       );
-    } finally {
-      setLoading(false);
-    }
-  }, [organizationId]);
+    },
+    onSettled: () => {
+      setRemovingKey(null);
+    },
+  });
 
-  React.useEffect(() => {
-    void Promise.resolve().then(loadQualifications);
-  }, [loadQualifications]);
-
-  async function persistQualification(
-    category: string,
-    evidenceRefs: string
-  ) {
+  function persistQualification(category: string, evidenceRefs: string) {
     const trimmed = evidenceRefs.trim();
     if (!trimmed) {
       toast.error("Vui lòng tải lên ít nhất 1 chứng chỉ chuyên môn.");
       return;
     }
-    setSubmittingCategory(category);
-    try {
-      const res = await fetch(
-        `/api/gateway/providers/current/qualifications/${encodeURIComponent(category)}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Organization-Id": organizationId,
-          },
-          body: JSON.stringify({ evidenceRefs: trimmed }),
-        }
-      );
-      const json = (await res.json()) as ApiResponse<CategoryQualificationItem>;
-      const updated = unwrapApiResponse(json);
-      setItems((prev) => {
-        const exists = prev.some((it) => it.category === category);
-        return exists
-          ? prev.map((it) => (it.category === category ? updated : it))
-          : [...prev, updated];
-      });
-      setDrafts((prev) => ({
-        ...prev,
-        [category]: updated.evidenceRefs ?? trimmed,
-      }));
-      toast.success("Đã lưu và gửi chứng chỉ chuyên môn để Admin xét duyệt.");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể gửi chứng chỉ."
-      );
-    } finally {
-      setSubmittingCategory(null);
-    }
+    upsertMutation.mutate({ category, evidenceRefs: trimmed });
   }
 
-  async function handleSubmit(category: string) {
-    await persistQualification(category, drafts[category] ?? "");
-  }
-
-  async function handleRemoveFile(category: string, objectKey: string) {
-    const currentRefs = parseUploadedMediaRefs(drafts[category]);
+  function handleRemoveFile(category: string, objectKey: string, currentDraft: string) {
+    const currentRefs = parseUploadedMediaRefs(currentDraft);
     const remaining = currentRefs.filter((item) => item.objectKey !== objectKey);
     const nextSerialized = serializeUploadedMediaRefs(remaining);
-
     setRemovingKey(objectKey);
-    setSubmittingCategory(category);
-    try {
-      if (remaining.length > 0) {
-        await persistQualification(category, nextSerialized);
-      } else {
-        const res = await fetch(
-          `/api/gateway/providers/current/qualifications/${encodeURIComponent(category)}`,
-          {
-            method: "DELETE",
-            headers: {
-              "X-Organization-Id": organizationId,
-            },
-          }
-        );
-        if (!res.ok && res.status !== 204) {
-          const json = (await res.json().catch(() => null)) as ApiResponse<unknown> | null;
-          throw new Error(json?.message || "Không thể xóa chứng chỉ.");
-        }
-        setItems((prev) => prev.filter((it) => it.category !== category));
-        setDrafts((prev) => ({ ...prev, [category]: "" }));
-        toast.success("Đã xóa chứng chỉ khỏi danh mục.");
-      }
-
-      if (!/^https?:\/\//i.test(objectKey)) {
-        void fetch(
-          `/api/gateway/organizations/${encodeURIComponent(organizationId)}/evidence?objectKey=${encodeURIComponent(objectKey)}`,
-          {
-            method: "DELETE",
-            headers: { "x-homecare-scope": "personal" },
-          }
-        ).catch(() => {});
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Không thể xóa tệp chứng chỉ."
-      );
-    } finally {
-      setRemovingKey(null);
-      setSubmittingCategory(null);
-    }
+    removeMutation.mutate({ category, objectKey, remaining, nextSerialized });
   }
+
+  const items = qualificationsQuery.data ?? [];
+  const loadError =
+    qualificationsQuery.error instanceof Error
+      ? qualificationsQuery.error.message
+      : qualificationsQuery.isError
+        ? "Không thể tải danh sách chứng chỉ chuyên môn."
+        : null;
 
   return (
     <Card id="qualifications" className="p-5 space-y-4 scroll-mt-20">
@@ -194,7 +169,7 @@ export function OrgQualificationsPanel({
         </Alert>
       ) : null}
 
-      {loading ? (
+      {qualificationsQuery.isPending ? (
         <div
           className="grid gap-4 lg:grid-cols-3"
           role="status"
@@ -214,8 +189,10 @@ export function OrgQualificationsPanel({
           {HIGH_RISK_CATEGORIES.map((cat) => {
             const current = items.find((it) => it.category === cat.code);
             const status = current?.status;
-            const draft = drafts[cat.code] ?? "";
-            const isSaving = submittingCategory === cat.code;
+            const draft = drafts[cat.code] ?? current?.evidenceRefs ?? "";
+            const isSaving =
+              (upsertMutation.isPending && upsertMutation.variables?.category === cat.code) ||
+              (removeMutation.isPending && removeMutation.variables?.category === cat.code);
 
             return (
               <div
@@ -253,7 +230,7 @@ export function OrgQualificationsPanel({
                     onChange={(next) => {
                       setDrafts((prev) => ({ ...prev, [cat.code]: next }));
                       if (next.trim()) {
-                        void persistQualification(cat.code, next);
+                        persistQualification(cat.code, next);
                       }
                     }}
                     presignUrl="/api/gateway/organizations/evidence/presign"
@@ -269,7 +246,7 @@ export function OrgQualificationsPanel({
                       value={draft}
                       emptyText="Chưa có tệp chứng chỉ nào."
                       onRemove={(objectKey) =>
-                        void handleRemoveFile(cat.code, objectKey)
+                        handleRemoveFile(cat.code, objectKey, draft)
                       }
                       removingKey={removingKey}
                       disabled={isSaving}
@@ -282,7 +259,7 @@ export function OrgQualificationsPanel({
                   size="sm"
                   variant="outline"
                   disabled={!draft.trim() || isSaving}
-                  onClick={() => void handleSubmit(cat.code)}
+                  onClick={() => persistQualification(cat.code, draft)}
                 >
                   {isSaving ? "Đang gửi..." : "Gửi duyệt chứng chỉ"}
                 </Button>

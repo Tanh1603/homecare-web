@@ -1,8 +1,5 @@
-import {
-  extractPageItems,
-  unwrapApiResponse,
-  type ApiResponse,
-} from "@/shared/api/api-envelope";
+import { extractPageItems } from "@/shared/api/api-envelope";
+import { gatewayHeaders, requestGateway } from "@/shared/api/http-client";
 import {
   requestPresignedUpload,
   uploadFileViaPresignedUrl,
@@ -27,33 +24,25 @@ export type PresignedEvidenceUpload = PresignedUploadResponse;
 
 export const organizationsHttpAdapter = {
   async listAll(page = 1, size = 100): Promise<Organization[]> {
-    const res = await fetch(
-      `/api/gateway/admin/organizations?page=${page}&size=${size}`,
-      {
-        cache: "no-store",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
+    const data = await requestGateway<
       { items?: Record<string, unknown>[] } | Record<string, unknown>[]
-    >;
-    const items = extractPageItems(unwrapApiResponse(json));
-    return items.map(normalizeOrganization);
+    >({
+      url: `/admin/organizations?page=${page}&size=${size}`,
+      method: "GET",
+      headers: gatewayHeaders({ personal: true }),
+    });
+    return extractPageItems(data).map(normalizeOrganization);
   },
 
   async listMyMemberships(page = 1, size = 100): Promise<OrganizationMembership[]> {
-    const res = await fetch(
-      `/api/gateway/organizations/my?page=${page}&size=${size}`,
-      {
-        cache: "no-store",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<
+    const data = await requestGateway<
       { items?: Record<string, unknown>[] } | Record<string, unknown>[]
-    >;
-    const items = extractPageItems(unwrapApiResponse(json));
-    return items.map(normalizeMembership);
+    >({
+      url: `/organizations/my?page=${page}&size=${size}`,
+      method: "GET",
+      headers: gatewayHeaders({ personal: true }),
+    });
+    return extractPageItems(data).map(normalizeMembership);
   },
 
   async register(input: RegisterOrganizationInput): Promise<Organization> {
@@ -63,13 +52,12 @@ export const organizationsHttpAdapter = {
       description: input.description?.trim() || undefined,
       identityEvidenceRefs: input.identityEvidenceRefs.trim(),
     };
-    const res = await fetch("/api/gateway/organizations", {
+    const data = await requestGateway<Record<string, unknown>>({
+      url: "/organizations",
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    return normalizeOrganization(data);
   },
 
   async resubmit(
@@ -77,29 +65,19 @@ export const organizationsHttpAdapter = {
     input: ResubmitOrganizationInput,
     version?: number
   ): Promise<Organization> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "x-homecare-scope": "personal",
-    };
-    if (typeof version === "number") {
-      headers["If-Match"] = `"v${version}"`;
-    }
     const payload = {
       ...input,
       taxCode: input.taxCode?.trim() || undefined,
       description: input.description?.trim() || undefined,
       identityEvidenceRefs: input.identityEvidenceRefs.trim(),
     };
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/resubmit`,
-      {
-        method: "PUT",
-        headers,
-        body: JSON.stringify(payload),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/resubmit`,
+      method: "PUT",
+      headers: gatewayHeaders({ version, personal: true }),
+      data: payload,
+    });
+    return normalizeOrganization(data);
   },
 
   async upgradeLegalEntity(
@@ -111,27 +89,17 @@ export const organizationsHttpAdapter = {
     },
     version?: number
   ): Promise<Organization> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "x-homecare-scope": "personal",
-    };
-    if (typeof version === "number") {
-      headers["If-Match"] = `"v${version}"`;
-    }
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/upgrade-legal-entity`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          targetLegalEntityType: input.targetLegalEntityType,
-          taxCode: input.taxCode?.trim() || undefined,
-          identityEvidenceRefs: input.identityEvidenceRefs?.trim() || undefined,
-        }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/upgrade-legal-entity`,
+      method: "POST",
+      headers: gatewayHeaders({ version, personal: true }),
+      data: {
+        targetLegalEntityType: input.targetLegalEntityType,
+        taxCode: input.taxCode?.trim() || undefined,
+        identityEvidenceRefs: input.identityEvidenceRefs?.trim() || undefined,
+      },
+    });
+    return normalizeOrganization(data);
   },
 
   async presignEvidenceUpload(input: {
@@ -168,68 +136,52 @@ export const organizationsHttpAdapter = {
         : input.status === "REJECTED"
           ? "reject"
           : "suspend";
-    const res = await fetch(
-      `/api/gateway/admin/organizations/${organizationId}/${action}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-homecare-scope": "personal",
-        },
-        body:
-          action === "reject" || action === "suspend"
-            ? JSON.stringify({
-                reason:
-                  input.reason?.trim() ||
-                  (action === "reject"
-                    ? "Hồ sơ chưa đạt yêu cầu"
-                    : "Tạm ngưng theo quyết định quản trị"),
-              })
-            : undefined,
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/admin/organizations/${organizationId}/${action}`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+      data:
+        action === "reject" || action === "suspend"
+          ? {
+              reason:
+                input.reason?.trim() ||
+                (action === "reject"
+                  ? "Hồ sơ chưa đạt yêu cầu"
+                  : "Tạm ngưng theo quyết định quản trị"),
+            }
+          : undefined,
+    });
+    return normalizeOrganization(data);
   },
 
   async reactivate(organizationId: string): Promise<Organization> {
-    const res = await fetch(
-      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/reactivate`,
-      {
-        method: "POST",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/admin/organizations/${encodeURIComponent(organizationId)}/reactivate`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+    });
+    return normalizeOrganization(data);
   },
 
   async approveUpgrade(organizationId: string): Promise<Organization> {
-    const res = await fetch(
-      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/approve-upgrade`,
-      {
-        method: "POST",
-        headers: { "x-homecare-scope": "personal" },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/admin/organizations/${encodeURIComponent(organizationId)}/approve-upgrade`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+    });
+    return normalizeOrganization(data);
   },
 
   async addMember(
     organizationId: string,
     input: AddOrganizationMemberInput
   ): Promise<OrganizationMember> {
-    const res = await fetch("/api/gateway/organizations/current/members", {
+    return requestGateway<OrganizationMember>({
+      url: "/organizations/current/members",
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Organization-Id": organizationId,
-      },
-      body: JSON.stringify(input),
+      headers: gatewayHeaders({ organizationId }),
+      data: input,
     });
-    const json = (await res.json()) as ApiResponse<OrganizationMember>;
-    return unwrapApiResponse(json);
   },
 
   async updateMemberRole(
@@ -237,33 +189,20 @@ export const organizationsHttpAdapter = {
     userId: string,
     role: OrganizationMemberRole
   ): Promise<OrganizationMember> {
-    const res = await fetch(
-      `/api/gateway/organizations/current/members/${encodeURIComponent(userId)}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Organization-Id": organizationId,
-        },
-        body: JSON.stringify({ role }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<OrganizationMember>;
-    return unwrapApiResponse(json);
+    return requestGateway<OrganizationMember>({
+      url: `/organizations/current/members/${encodeURIComponent(userId)}`,
+      method: "PATCH",
+      headers: gatewayHeaders({ organizationId }),
+      data: { role },
+    });
   },
 
   async removeMember(organizationId: string, userId: string): Promise<void> {
-    const res = await fetch(
-      `/api/gateway/organizations/current/members/${encodeURIComponent(userId)}`,
-      {
-        method: "DELETE",
-        headers: {
-          "X-Organization-Id": organizationId,
-        },
-      }
-    );
-    const json = (await res.json()) as ApiResponse<null>;
-    unwrapApiResponse(json);
+    await requestGateway<null>({
+      url: `/organizations/current/members/${encodeURIComponent(userId)}`,
+      method: "DELETE",
+      headers: gatewayHeaders({ organizationId }),
+    });
   },
 
   async updateCurrent(
@@ -274,16 +213,13 @@ export const organizationsHttpAdapter = {
       ...input,
       description: input.description?.trim() || undefined,
     };
-    const res = await fetch("/api/gateway/organizations/current", {
+    const data = await requestGateway<Record<string, unknown>>({
+      url: "/organizations/current",
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Organization-Id": organizationId,
-      },
-      body: JSON.stringify(payload),
+      headers: gatewayHeaders({ organizationId }),
+      data: payload,
     });
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    return normalizeOrganization(data);
   },
 
   async ban(
@@ -294,19 +230,13 @@ export const organizationsHttpAdapter = {
       safetyInterventionFlag?: boolean;
     }
   ): Promise<Organization> {
-    const res = await fetch(
-      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/ban`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-homecare-scope": "personal",
-        },
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<Record<string, unknown>>;
-    return normalizeOrganization(unwrapApiResponse(json));
+    const data = await requestGateway<Record<string, unknown>>({
+      url: `/admin/organizations/${encodeURIComponent(organizationId)}/ban`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+      data: input,
+    });
+    return normalizeOrganization(data);
   },
 
   async submitAppeal(
@@ -317,23 +247,12 @@ export const organizationsHttpAdapter = {
       evidenceRefs?: string;
     }
   ): Promise<{ id: string; status: string; slaDueAt: string }> {
-    const res = await fetch(
-      `/api/gateway/organizations/${encodeURIComponent(organizationId)}/appeals`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-homecare-scope": "personal",
-        },
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      id: string;
-      status: string;
-      slaDueAt: string;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway<{ id: string; status: string; slaDueAt: string }>({
+      url: `/organizations/${encodeURIComponent(organizationId)}/appeals`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+      data: input,
+    });
   },
 
   async resolveAppeal(
@@ -345,56 +264,35 @@ export const organizationsHttpAdapter = {
       targetStatus?: "APPROVED" | "SUSPENDED";
     }
   ): Promise<{ id: string; status: string }> {
-    const res = await fetch(
-      `/api/gateway/admin/organizations/${encodeURIComponent(organizationId)}/appeals/${encodeURIComponent(appealId)}/resolve`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-homecare-scope": "personal",
-        },
-        body: JSON.stringify(input),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      id: string;
-      status: string;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway<{ id: string; status: string }>({
+      url: `/admin/organizations/${encodeURIComponent(organizationId)}/appeals/${encodeURIComponent(appealId)}/resolve`,
+      method: "POST",
+      headers: gatewayHeaders({ personal: true }),
+      data: input,
+    });
   },
 
   async listGovernanceSettings(): Promise<
     { settingKey: string; settingValue: string; updatedBy?: string | null; updatedAt?: string }[]
   > {
-    const res = await fetch("/api/gateway/admin/governance/settings", {
-      cache: "no-store",
-      headers: { "x-homecare-scope": "personal" },
-    });
-    const json = (await res.json()) as ApiResponse<
+    return requestGateway<
       { settingKey: string; settingValue: string; updatedBy?: string | null; updatedAt?: string }[]
-    >;
-    return unwrapApiResponse(json);
+    >({
+      url: "/admin/governance/settings",
+      method: "GET",
+      headers: gatewayHeaders({ personal: true }),
+    });
   },
 
   async updateGovernanceSetting(
     key: string,
     value: string
   ): Promise<{ settingKey: string; settingValue: string }> {
-    const res = await fetch(
-      `/api/gateway/admin/governance/settings/${encodeURIComponent(key)}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-homecare-scope": "personal",
-        },
-        body: JSON.stringify({ value }),
-      }
-    );
-    const json = (await res.json()) as ApiResponse<{
-      settingKey: string;
-      settingValue: string;
-    }>;
-    return unwrapApiResponse(json);
+    return requestGateway<{ settingKey: string; settingValue: string }>({
+      url: `/admin/governance/settings/${encodeURIComponent(key)}`,
+      method: "PUT",
+      headers: gatewayHeaders({ personal: true }),
+      data: { value },
+    });
   },
 };

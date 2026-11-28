@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   LEGAL_ENTITY_TYPE_LABELS,
@@ -40,7 +41,6 @@ export function OrganizationActionDialogs({
   const [appealId, setAppealId] = React.useState("");
   const [safetyInterventionFlag, setSafetyInterventionFlag] =
     React.useState(false);
-  const [busy, setBusy] = React.useState(false);
 
   const handleClose = React.useCallback(() => {
     setReason("");
@@ -49,113 +49,102 @@ export function OrganizationActionDialogs({
     onClose();
   }, [onClose]);
 
-  async function handleReject() {
-    if (!dialog || dialog.kind !== "REJECT") return;
-    setBusy(true);
-    try {
-      const updated = await organizationsApi.review(dialog.org.id, {
-        status: "REJECTED",
-        reason: reason.trim() || "Hồ sơ chưa đạt yêu cầu",
-      });
-      onUpdated(updated);
-      toast.success(
-        `Đã cập nhật trạng thái ${dialog.org.name} → ${ORG_STATUS_LABELS.REJECTED}`
-      );
-      handleClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSuspend() {
-    if (!dialog || dialog.kind !== "SUSPEND") return;
-    setBusy(true);
-    try {
-      const updated = await organizationsApi.review(dialog.org.id, {
-        status: "SUSPENDED",
-        reason: reason.trim() || "Tạm ngưng bởi quản trị viên",
-      });
-      onUpdated(updated);
-      toast.success(
-        `Đã cập nhật trạng thái ${dialog.org.name} → ${ORG_STATUS_LABELS.SUSPENDED}`
-      );
-      handleClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleBan() {
-    if (!dialog || dialog.kind !== "BAN" || !reason.trim()) return;
-    setBusy(true);
-    try {
-      const updated = await organizationsHttpAdapter.ban(dialog.org.id, {
-        reason: reason.trim(),
-        safetyInterventionFlag,
-      });
-      onUpdated(updated);
-      toast.success(`Đã cấm vĩnh viễn "${dialog.org.name}"`);
-      handleClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleResolveAppeal(approved: boolean) {
-    if (!dialog || dialog.kind !== "APPEAL" || !appealId.trim()) return;
-    setBusy(true);
-    try {
-      await organizationsHttpAdapter.resolveAppeal(
-        dialog.org.id,
-        appealId.trim(),
-        approved
-          ? {
-              approved: true,
-              reviewNote: reason.trim() || undefined,
-              targetStatus: "APPROVED",
-            }
-          : {
-              approved: false,
-              reviewNote: reason.trim() || undefined,
-            }
-      );
-      if (approved) {
-        onUpdated({ ...dialog.org, status: "APPROVED" });
-        toast.success("Đã chấp thuận kháng cáo và khôi phục trạng thái đã duyệt.");
-      } else {
-        toast.success("Đã từ chối kháng cáo.");
+  const actionMutation = useMutation({
+    mutationFn: async (
+      params:
+        | { kind: "REJECT" | "SUSPEND" | "BAN" | "APPROVE_UPGRADE"; org: Organization }
+        | { kind: "APPEAL"; org: Organization; approved: boolean }
+    ) => {
+      switch (params.kind) {
+        case "REJECT":
+          return {
+            org: await organizationsApi.review(params.org.id, {
+              status: "REJECTED",
+              reason: reason.trim() || "Hồ sơ chưa đạt yêu cầu",
+            }),
+            message: `Đã cập nhật trạng thái ${params.org.name} → ${ORG_STATUS_LABELS.REJECTED}`,
+          };
+        case "SUSPEND":
+          return {
+            org: await organizationsApi.review(params.org.id, {
+              status: "SUSPENDED",
+              reason: reason.trim() || "Tạm ngưng bởi quản trị viên",
+            }),
+            message: `Đã cập nhật trạng thái ${params.org.name} → ${ORG_STATUS_LABELS.SUSPENDED}`,
+          };
+        case "BAN":
+          return {
+            org: await organizationsHttpAdapter.ban(params.org.id, {
+              reason: reason.trim(),
+              safetyInterventionFlag,
+            }),
+            message: `Đã cấm vĩnh viễn "${params.org.name}"`,
+          };
+        case "APPEAL":
+          await organizationsHttpAdapter.resolveAppeal(
+            params.org.id,
+            appealId.trim(),
+            params.approved
+              ? {
+                  approved: true,
+                  reviewNote: reason.trim() || undefined,
+                  targetStatus: "APPROVED",
+                }
+              : {
+                  approved: false,
+                  reviewNote: reason.trim() || undefined,
+                }
+          );
+          return {
+            org: params.approved ? { ...params.org, status: "APPROVED" as const } : null,
+            message: params.approved
+              ? "Đã chấp thuận kháng cáo và khôi phục trạng thái đã duyệt."
+              : "Đã từ chối kháng cáo.",
+          };
+        case "APPROVE_UPGRADE":
+          return {
+            org: await organizationsHttpAdapter.approveUpgrade(params.org.id),
+            message: `Đã phê duyệt nâng cấp loại hình pháp lý cho "${params.org.name}"`,
+          };
       }
+    },
+    onSuccess: (result) => {
+      if (result.org) {
+        onUpdated(result.org);
+      }
+      toast.success(result.message);
       handleClose();
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setBusy(false);
-    }
+    },
+  });
+
+  const busy = actionMutation.isPending;
+
+  function handleReject() {
+    if (!dialog || dialog.kind !== "REJECT") return;
+    actionMutation.mutate({ kind: "REJECT", org: dialog.org });
   }
 
-  async function handleApproveUpgrade() {
+  function handleSuspend() {
+    if (!dialog || dialog.kind !== "SUSPEND") return;
+    actionMutation.mutate({ kind: "SUSPEND", org: dialog.org });
+  }
+
+  function handleBan() {
+    if (!dialog || dialog.kind !== "BAN" || !reason.trim()) return;
+    actionMutation.mutate({ kind: "BAN", org: dialog.org });
+  }
+
+  function handleResolveAppeal(approved: boolean) {
+    if (!dialog || dialog.kind !== "APPEAL" || !appealId.trim()) return;
+    actionMutation.mutate({ kind: "APPEAL", org: dialog.org, approved });
+  }
+
+  function handleApproveUpgrade() {
     if (!dialog || dialog.kind !== "APPROVE_UPGRADE") return;
-    setBusy(true);
-    try {
-      const updated = await organizationsHttpAdapter.approveUpgrade(
-        dialog.org.id
-      );
-      onUpdated(updated);
-      toast.success(
-        `Đã phê duyệt nâng cấp loại hình pháp lý cho "${dialog.org.name}"`
-      );
-      handleClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
-    } finally {
-      setBusy(false);
-    }
+    actionMutation.mutate({ kind: "APPROVE_UPGRADE", org: dialog.org });
   }
 
   return (

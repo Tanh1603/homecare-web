@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import {
   COMPANY_TAX_CODE_REGEX,
@@ -14,6 +17,7 @@ import {
   type LegalEntityType,
   type Organization,
   type OrganizationMemberRole,
+  type UpdateOrganizationInput,
 } from "../contracts/organization";
 import { organizationsApi } from "../api";
 import { OrgEvidenceUploader } from "./org-evidence-uploader";
@@ -66,86 +70,90 @@ export function OrgProfileForm({
   const [upgradeEvidenceRefs, setUpgradeEvidenceRefs] = React.useState(
     initialOrganization?.identityEvidenceRefs ?? ""
   );
-  const [upgrading, setUpgrading] = React.useState(false);
 
-  const [savedValues, setSavedValues] = React.useState({
-    name: initialOrganization?.name ?? organizationName,
-    phone: initialOrganization?.phone ?? "",
-    city: initialOrganization?.city ?? "",
-    address: initialOrganization?.address ?? "",
-    description: initialOrganization?.description ?? "",
+  const form = useForm<UpdateOrganizationInput>({
+    resolver: zodResolver(updateOrganizationSchema),
+    defaultValues: {
+      name: initialOrganization?.name ?? organizationName,
+      phone: initialOrganization?.phone ?? "",
+      city: initialOrganization?.city ?? "",
+      address: initialOrganization?.address ?? "",
+      description: initialOrganization?.description ?? "",
+    },
   });
 
-  const [name, setName] = React.useState(savedValues.name);
-  const [phone, setPhone] = React.useState(savedValues.phone);
-  const [city, setCity] = React.useState(savedValues.city);
-  const [address, setAddress] = React.useState(savedValues.address);
-  const [description, setDescription] = React.useState(savedValues.description);
-  const [saving, setSaving] = React.useState(false);
+  const [watchedName, watchedCity] = useWatch({
+    control: form.control,
+    name: ["name", "city"],
+  });
 
-  const isDirty =
-    name !== savedValues.name ||
-    phone !== savedValues.phone ||
-    city !== savedValues.city ||
-    address !== savedValues.address ||
-    description !== savedValues.description;
-
-  function handleReset() {
-    setName(savedValues.name);
-    setPhone(savedValues.phone);
-    setCity(savedValues.city);
-    setAddress(savedValues.address);
-    setDescription(savedValues.description);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canEdit) return;
-
-    const parsed = updateOrganizationSchema.safeParse({
-      name,
-      phone,
-      city,
-      address,
-      description,
-    });
-    if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const updated = await organizationsApi.updateCurrent(
-        organizationId,
-        parsed.data
-      );
+  const updateMutation = useMutation({
+    mutationFn: (values: UpdateOrganizationInput) =>
+      organizationsApi.updateCurrent(organizationId, values),
+    onSuccess: (updated) => {
       setOrgSnapshot(updated);
-      const nextSaved = {
+      form.reset({
         name: updated.name,
         phone: updated.phone,
         city: updated.city,
         address: updated.address ?? "",
         description: updated.description ?? "",
-      };
-      setSavedValues(nextSaved);
-      setName(nextSaved.name);
-      setPhone(nextSaved.phone);
-      setCity(nextSaved.city);
-      setAddress(nextSaved.address);
-      setDescription(nextSaved.description);
+      });
       toast.success("Đã cập nhật hồ sơ tổ chức");
       router.refresh();
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(
         err instanceof Error ? err.message : "Không thể cập nhật hồ sơ tổ chức"
       );
-    } finally {
-      setSaving(false);
-    }
+    },
+  });
+
+  const upgradeMutation = useMutation({
+    mutationFn: (payload: {
+      version: number | undefined;
+      targetLegalEntityType: LegalEntityType;
+      taxCode: string;
+      identityEvidenceRefs: string;
+    }) =>
+      organizationsApi.upgradeLegalEntity(
+        organizationId,
+        {
+          targetLegalEntityType: payload.targetLegalEntityType,
+          taxCode: payload.taxCode,
+          identityEvidenceRefs: payload.identityEvidenceRefs,
+        },
+        payload.version
+      ),
+    onSuccess: (updated) => {
+      setOrgSnapshot(updated);
+      setUpgradeOpen(false);
+      toast.success("Đã gửi yêu cầu nâng cấp loại hình pháp lý. Chờ Admin phê duyệt.");
+      router.refresh();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể gửi yêu cầu nâng cấp pháp nhân"
+      );
+    },
+  });
+
+  const isDirty = form.formState.isDirty;
+  const saving = updateMutation.isPending;
+  const upgrading = upgradeMutation.isPending;
+
+  function handleReset() {
+    form.reset();
   }
 
-  async function handleUpgradeSubmit(e: React.FormEvent) {
+  function handleProfileSubmit(values: UpdateOrganizationInput) {
+    if (!canEdit) return;
+    updateMutation.mutate(values);
+  }
+
+  function handleUpgradeSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isOwner || !orgSnapshot) return;
     const trimmedTaxCode = upgradeTaxCode.trim();
@@ -169,37 +177,19 @@ export function OrgProfileForm({
       toast.error("Vui lòng tải lên tài liệu chứng minh pháp lý mới.");
       return;
     }
-    setUpgrading(true);
-    try {
-      const updated = await organizationsApi.upgradeLegalEntity(
-        organizationId,
-        {
-          targetLegalEntityType: targetLegalType,
-          taxCode: trimmedTaxCode,
-          identityEvidenceRefs: upgradeEvidenceRefs,
-        },
-        orgSnapshot.version
-      );
-      setOrgSnapshot(updated);
-      setUpgradeOpen(false);
-      toast.success("Đã gửi yêu cầu nâng cấp loại hình pháp lý. Chờ Admin phê duyệt.");
-      router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể gửi yêu cầu nâng cấp pháp nhân"
-      );
-    } finally {
-      setUpgrading(false);
-    }
+    upgradeMutation.mutate({
+      version: orgSnapshot.version,
+      targetLegalEntityType: targetLegalType,
+      taxCode: trimmedTaxCode,
+      identityEvidenceRefs: upgradeEvidenceRefs,
+    });
   }
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>{name || organizationName}</CardTitle>
+          <CardTitle>{watchedName || organizationName}</CardTitle>
           {isDirty ? (
             <Badge variant="warning" className="hc-animate-error-in">
               Chưa lưu thay đổi
@@ -244,46 +234,65 @@ export function OrgProfileForm({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={form.handleSubmit(handleProfileSubmit)} className="space-y-4">
           <FormSection
             title="Thông tin liên hệ & Địa điểm"
             description="Thông tin hiển thị cho khách hàng khi đặt lịch dịch vụ hoặc mua linh kiện."
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="Tên tổ chức" htmlFor="org-name" required>
+              <FormField
+                label="Tên tổ chức"
+                htmlFor="org-name"
+                required
+                error={form.formState.errors.name?.message}
+              >
                 <Input
                   id="org-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
                   disabled={!canEdit || saving}
-                  required
+                  {...form.register("name")}
                 />
               </FormField>
-              <FormField label="Số điện thoại" htmlFor="org-phone" required>
+              <FormField
+                label="Số điện thoại"
+                htmlFor="org-phone"
+                required
+                error={form.formState.errors.phone?.message}
+              >
                 <Input
                   id="org-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
                   disabled={!canEdit || saving}
-                  required
+                  {...form.register("phone")}
                 />
               </FormField>
-              <FormField label="Tỉnh / Thành phố" htmlFor="org-city" required>
+              <FormField
+                label="Tỉnh / Thành phố"
+                htmlFor="org-city"
+                required
+                error={form.formState.errors.city?.message}
+              >
                 <ProvinceSelect
                   id="org-city"
-                  value={city}
-                  onChange={setCity}
+                  value={watchedCity}
+                  onChange={(next) =>
+                    form.setValue("city", next, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
                   disabled={!canEdit || saving}
                   required
                 />
               </FormField>
-              <FormField label="Địa chỉ trụ sở" htmlFor="org-address" required>
+              <FormField
+                label="Địa chỉ trụ sở"
+                htmlFor="org-address"
+                required
+                error={form.formState.errors.address?.message}
+              >
                 <Input
                   id="org-address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
                   disabled={!canEdit || saving}
-                  required
+                  {...form.register("address")}
                 />
               </FormField>
             </div>
@@ -291,14 +300,14 @@ export function OrgProfileForm({
               label="Mô tả tổ chức"
               htmlFor="org-description"
               hint="Giới thiệu thế mạnh dịch vụ, khu vực phục vụ và cam kết bảo hành."
+              error={form.formState.errors.description?.message}
             >
               <Textarea
                 id="org-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
                 disabled={!canEdit || saving}
                 rows={3}
                 placeholder="Giới thiệu dịch vụ, khu vực phục vụ..."
+                {...form.register("description")}
               />
             </FormField>
           </FormSection>
