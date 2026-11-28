@@ -15,8 +15,11 @@ test.describe("MVP-0 /register/org Browser E2E", () => {
     await expect(legalSelect).toBeVisible();
 
     await expect(typeSelect.locator('option[value="SERVICE"]')).toHaveCount(1);
+    await expect(typeSelect.locator('option[value="SERVICE"]')).not.toBeDisabled();
     await expect(typeSelect.locator('option[value="COMMERCE"]')).toHaveCount(1);
+    await expect(typeSelect.locator('option[value="COMMERCE"]')).toBeDisabled();
     await expect(typeSelect.locator('option[value="BOTH"]')).toHaveCount(1);
+    await expect(typeSelect.locator('option[value="BOTH"]')).toBeDisabled();
 
     await expect(legalSelect.locator('option[value="COMPANY"]')).toHaveCount(1);
     await expect(legalSelect.locator('option[value="HOUSEHOLD_BUSINESS"]')).toHaveCount(1);
@@ -32,7 +35,7 @@ test.describe("MVP-0 /register/org Browser E2E", () => {
     if (!isLive) {
       await page.route("**/api/gateway/organizations", async (route) => {
         const body = route.request().postDataJSON() as Record<string, unknown>;
-        expect(body.type).toBe("BOTH");
+        expect(body.type).toBe("SERVICE");
         expect(body.legalEntityType).toBe("HOUSEHOLD_BUSINESS");
         await route.fulfill({
           status: 401,
@@ -50,8 +53,9 @@ test.describe("MVP-0 /register/org Browser E2E", () => {
 
     await page.goto("/register/org");
     await page.locator("#name").fill("Điện Lạnh MVP0 Browser E2E");
-    await page.locator("#type").selectOption("BOTH");
+    await page.locator("#type").selectOption("SERVICE");
     await page.locator("#legalEntityType").selectOption("HOUSEHOLD_BUSINESS");
+    await page.locator("#taxCode").fill("001090012345");
     await page.locator("#phone").fill("0901234567");
     await page.locator("#city").fill("TP. Hồ Chí Minh");
     await page.locator("#address").fill("123 Nguyễn Văn Linh, Quận 7");
